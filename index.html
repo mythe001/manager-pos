@@ -173,8 +173,11 @@ function postMessageWithResponse(message) {
           event.data?.requestId === requestId) {
         clearTimeout(timer);
         window.removeEventListener('message', handler);
-        if (event.data.error) reject(new Error(event.data.error));
-        else resolve(event.data.body);
+        if (event.data.error || event.data.status >= 400) {
+          reject(new Error(event.data.error || `HTTP ${event.data.status || 400}: Manager rejected the request.`));
+        } else {
+          resolve(event.data.body);
+        }
       }
     }
     window.addEventListener('message', handler);
@@ -1059,13 +1062,12 @@ async function createReceiptForLastInvoice() {
       throw new Error('Could not resolve Accounts Receivable account for this business.');
     }
 
+    // Matching Developer Toolkit Payload Schema
     const payload = {
       value: {
         date: (sale.issueDate || todayISO()).split('T')[0] + 'T00:00:00',
         reference: sale.reference || '',
         description: `Payment for Sales Invoice ${sale.reference || ''}`,
-        paidBy: 1, // 1 = Customer
-        customer: sale.customerKey,
         receivedIn: receivedIn,
         lines: [{
           account: arAccount,
@@ -1084,10 +1086,6 @@ async function createReceiptForLastInvoice() {
       ? response
       : (response?.key || response?.value?.key || response?.value || null);
 
-    if (!key && response === undefined) {
-      throw new Error('Manager did not return a valid Receipt key. Payment was not confirmed.');
-    }
-
     window.posLastCreatedReceipt = {
       key: key || 'created',
       reference: sale.reference,
@@ -1100,7 +1098,7 @@ async function createReceiptForLastInvoice() {
     window.posPaymentInvoice = null;
     closePayment();
 
-    alert(`Payment recorded in Manager for ${sale.reference}.`);
+    alert(`Payment recorded successfully in Manager for ${sale.reference}.`);
   } catch (err) {
     console.error('Receipt creation failed:', err);
     showPaymentError(err?.message || 'Could not record payment.');
