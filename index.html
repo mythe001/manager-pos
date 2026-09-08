@@ -75,7 +75,7 @@
 </div>
       <div>
         <span class="text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">Manager.io POS</span>
-        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.5.1</h1>
+        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.5.2.1</h1>
       </div>
       <button id="load-btn" onclick="loadPosData()" class="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95">
         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
@@ -1063,6 +1063,36 @@ async function createReceiptForLastInvoice() {
   document.getElementById('payment-error')?.classList.add('hidden');
 
   try {
+    // If a receipt with this POS reference already exists, use it rather
+    // than posting a duplicate payment.
+    const existingReceipts = await fetchBatch('/api4/receipt-batch');
+    const existing = existingReceipts
+      .slice()
+      .reverse()
+      .find(receipt => {
+        const item = receipt?.item || receipt || {};
+        return item.reference === sale.reference &&
+               item.customer === sale.customerKey;
+      });
+
+    if (existing) {
+      const existingKey = existing.key || existing.item?.key;
+      if (existingKey) {
+        window.posLastCreatedReceipt = {
+          key: existingKey,
+          reference: sale.reference,
+          invoiceKey: sale.key,
+          customerKey: sale.customerKey,
+          receivedIn,
+          amount
+        };
+        window.posPaymentInvoice = null;
+        closePayment();
+        alert(`Payment receipt already exists for ${sale.reference}. No duplicate was created.`);
+        return;
+      }
+    }
+
     const payload = {
       value: {
         date: (sale.issueDate || todayISO()) + 'T00:00:00',
@@ -1081,13 +1111,30 @@ async function createReceiptForLastInvoice() {
 
     const result = await apiCall('POST', '/api4/receipt', payload);
 
-    const receiptKey =
+    // The working Toolkit POS normally receives the Receipt key directly.
+    // Some bridge/API responses can be empty or wrapped, so verify the
+    // transaction in Manager before declaring success.
+    let receiptKey =
       typeof result === 'string'
         ? result
-        : result?.key || result?.value?.key || result?.value;
+        : result?.key || result?.value?.key || result?.value || null;
 
     if (!receiptKey) {
-      throw new Error('Manager did not return the created Receipt key.');
+      const receipts = await fetchBatch('/api4/receipt-batch');
+      const matchingReceipt = receipts
+        .slice()
+        .reverse()
+        .find(receipt => {
+          const item = receipt?.item || receipt || {};
+          return item.reference === sale.reference &&
+                 item.customer === sale.customerKey;
+        });
+
+      receiptKey = matchingReceipt?.key || matchingReceipt?.item?.key || null;
+    }
+
+    if (!receiptKey) {
+      throw new Error('Manager did not confirm that the Receipt was created. Please check Manager before trying again.');
     }
 
     window.posLastCreatedReceipt = {
