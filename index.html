@@ -71,10 +71,11 @@
 <div class="flex items-center gap-2">
   <button type="button" onclick="parkCurrentOrder()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Park</button>
   <button type="button" onclick="openParkedOrders()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Parked <span id="parked-orders-count" class="text-[#8b949e]">(0)</span></button>
+  <button type="button" onclick="openUnpaidInvoices()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Receive Payment</button>
 </div>
       <div>
         <span class="text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">Manager.io POS</span>
-        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.4.1</h1>
+        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.5.1</h1>
       </div>
       <button id="load-btn" onclick="loadPosData()" class="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95">
         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
@@ -942,7 +943,23 @@ function showPaymentError(message) {
   el.classList.remove('hidden');
 }
 
-async function findAccountsReceivableAccount() {
+let cachedDefaultARAccount = undefined;
+let cachedReceiptsForAR = undefined;
+
+async function getReceiptsForAR() {
+  if (cachedReceiptsForAR !== undefined) return cachedReceiptsForAR;
+  try {
+    cachedReceiptsForAR = await fetchBatch('/api4/receipt-batch');
+  } catch (error) {
+    console.error('Receipt lookup for AR failed:', error);
+    cachedReceiptsForAR = [];
+  }
+  return cachedReceiptsForAR;
+}
+
+async function getDefaultARAccount() {
+  if (cachedDefaultARAccount !== undefined) return cachedDefaultARAccount;
+
   try {
     const [bsData, caData] = await Promise.all([
       apiCall('GET', '/api4/balance-sheet-account-batch?PageSize=500'),
@@ -955,22 +972,63 @@ async function findAccountsReceivableAccount() {
 
     const all = [...toItems(bsData), ...toItems(caData)];
 
-    const ar = all.find(record => {
-      const item = record.item || record.account || record;
-      return item?.isAccountsReceivable === true;
-    });
+    // Manager exposes the AR flag on the nested item object.
+    const arAccount = all.find(record =>
+      record?.item?.isAccountsReceivable === true
+    );
 
-    return ar?.key || ar?.item?.key || ar?.account?.key || null;
+    cachedDefaultARAccount = arAccount ? arAccount.key : null;
   } catch (error) {
-    console.error('Accounts Receivable lookup failed:', error);
-    return null;
+    console.error('Could not fetch balance-sheet/control accounts for AR lookup:', error);
+    cachedDefaultARAccount = null;
   }
+
+  return cachedDefaultARAccount;
+}
+
+async function resolveARAccountForCustomer(customerKey) {
+  const customerRec = customerList.find(c => c.key === customerKey);
+
+  // Manager customers may have their own AR control account.
+  let arAccount = customerRec?.item?.controlAccount || null;
+
+  if (!arAccount) {
+    const receipts = await getReceiptsForAR();
+
+    // Prefer an AR account already used for this exact customer.
+    for (const receipt of receipts) {
+      for (const line of (receipt?.item?.lines || [])) {
+        if (line?.accountsReceivableCustomer === customerKey && line?.account) {
+          arAccount = line.account;
+          break;
+        }
+      }
+      if (arAccount) break;
+    }
+
+    // Otherwise use the account from an existing AR receipt as evidence.
+    if (!arAccount) {
+      for (const receipt of receipts) {
+        const account = receipt?.item?.lines?.find(line => line?.account)?.account;
+        if (account) {
+          arAccount = account;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!arAccount) {
+    arAccount = await getDefaultARAccount();
+  }
+
+  return arAccount;
 }
 
 async function createReceiptForLastInvoice() {
   if (paymentBusy) return;
 
-  const sale = window.posLastCreatedInvoice;
+  const sale = window.posPaymentInvoice || window.posLastCreatedInvoice;
   if (!sale?.key) {
     showPaymentError('No Sales Invoice is available for payment.');
     return;
@@ -995,7 +1053,7 @@ async function createReceiptForLastInvoice() {
     return;
   }
 
-  const arAccount = await findAccountsReceivableAccount();
+  const arAccount = await resolveARAccountForCustomer(sale.customerKey);
   if (!arAccount) {
     showPaymentError('Could not identify the Accounts Receivable account.');
     return;
@@ -1041,6 +1099,7 @@ async function createReceiptForLastInvoice() {
       amount
     };
 
+    window.posPaymentInvoice = null;
     closePayment();
 
     // Keep the created invoice/receipt context available for the receipt-printing step.
@@ -1051,6 +1110,260 @@ async function createReceiptForLastInvoice() {
   } finally {
     setPaymentBusy(false);
   }
+}
+
+
+// -----------------------------------------------------------------------------
+// Receive Payment for existing unpaid Sales Invoices
+// Manager is the source of truth: invoices are retrieved from Sales Invoice
+// batch and their outstanding balances are reduced by receipts linked to them.
+// -----------------------------------------------------------------------------
+let unpaidInvoices = [];
+let unpaidInvoicesBusy = false;
+
+function recordItem(record) {
+  return record?.item || record || {};
+}
+
+function getRecordKey(record) {
+  return record?.key || record?.item?.key || '';
+}
+
+function getInvoiceDate(invoice) {
+  const item = recordItem(invoice);
+  return item.issueDate || item.date || '';
+}
+
+function getInvoiceReference(invoice) {
+  const item = recordItem(invoice);
+  return item.reference || item.invoiceNumber || getRecordKey(invoice);
+}
+
+function getInvoiceCustomerKey(invoice) {
+  const item = recordItem(invoice);
+  return item.customer || item.customerKey || '';
+}
+
+function getInvoiceLines(invoice) {
+  const item = recordItem(invoice);
+  return Array.isArray(item.lines) ? item.lines : [];
+}
+
+function getInvoiceTotal(invoice) {
+  const item = recordItem(invoice);
+
+  // Prefer Manager-provided total fields if available.
+  const direct = [item.total, item.totalAmount, item.amount]
+    .map(Number)
+    .find(n => Number.isFinite(n) && n >= 0);
+
+  if (direct !== undefined) return direct;
+
+  return getInvoiceLines(invoice).reduce((sum, line) => {
+    const qty = Number(line.qty || line.quantity || 0);
+    const price = Number(line.salesUnitPrice || line.unitPrice || line.price || 0);
+    const lineTotal = Number(line.amount || line.total || 0);
+
+    return sum + (Number.isFinite(lineTotal) && lineTotal !== 0
+      ? lineTotal
+      : qty * price);
+  }, 0);
+}
+
+function getReceiptInvoiceKey(line) {
+  return line?.accountsReceivableSalesInvoice || line?.salesInvoice || '';
+}
+
+function getReceiptAmount(line) {
+  return Number(line?.amount || 0);
+}
+
+function calculateInvoicePayments(receipts) {
+  const paidMap = Object.create(null);
+
+  for (const receipt of receipts || []) {
+    const item = recordItem(receipt);
+    for (const line of (item.lines || [])) {
+      const invoiceKey = getReceiptInvoiceKey(line);
+      const amount = getReceiptAmount(line);
+
+      if (invoiceKey && Number.isFinite(amount) && amount > 0) {
+        paidMap[invoiceKey] = (paidMap[invoiceKey] || 0) + amount;
+      }
+    }
+  }
+
+  return paidMap;
+}
+
+function customerNameForKey(key) {
+  const rec = customerList.find(c => c.key === key);
+  if (!rec) return 'Unknown customer';
+
+  const item = recordItem(rec);
+  return item.name || item.customerName || 'Unknown customer';
+}
+
+function formatInvoiceDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+  return d.toLocaleDateString();
+}
+
+async function loadUnpaidInvoices() {
+  const status = document.getElementById('unpaid-invoices-status');
+  if (status) status.textContent = 'Loading unpaid invoices…';
+
+  const [invoices, receipts] = await Promise.all([
+    fetchBatch('/api4/sales-invoice-batch'),
+    fetchBatch('/api4/receipt-batch')
+  ]);
+
+  const paidMap = calculateInvoicePayments(receipts);
+
+  unpaidInvoices = invoices
+    .map(invoice => {
+      const key = getRecordKey(invoice);
+      const total = getInvoiceTotal(invoice);
+      const paid = paidMap[key] || 0;
+      const outstanding = Math.max(0, total - paid);
+
+      return {
+        key,
+        reference: getInvoiceReference(invoice),
+        customerKey: getInvoiceCustomerKey(invoice),
+        customerName: customerNameForKey(getInvoiceCustomerKey(invoice)),
+        issueDate: getInvoiceDate(invoice),
+        total,
+        paid,
+        outstanding
+      };
+    })
+    .filter(invoice => invoice.key && invoice.total > 0 && invoice.outstanding > 0.000001)
+    .sort((a, b) => {
+      const da = new Date(a.issueDate || 0).getTime();
+      const db = new Date(b.issueDate || 0).getTime();
+      return db - da;
+    });
+
+  if (status) {
+    status.textContent = `${unpaidInvoices.length} unpaid invoice${unpaidInvoices.length === 1 ? '' : 's'}`;
+  }
+}
+
+async function openUnpaidInvoices() {
+  if (unpaidInvoicesBusy) return;
+
+  unpaidInvoicesBusy = true;
+  document.getElementById('unpaid-invoices-modal')?.classList.remove('hidden');
+
+  try {
+    await loadUnpaidInvoices();
+    filterUnpaidInvoices('');
+  } catch (error) {
+    console.error('Could not load unpaid invoices:', error);
+    const status = document.getElementById('unpaid-invoices-status');
+    if (status) status.textContent = 'Could not load unpaid invoices: ' + (error?.message || 'Unknown error');
+    document.getElementById('unpaid-invoices-list').innerHTML =
+      '<div class="p-5 text-center text-sm text-[#f85149]">Unable to load invoices.</div>';
+  } finally {
+    unpaidInvoicesBusy = false;
+  }
+}
+
+function closeUnpaidInvoices() {
+  document.getElementById('unpaid-invoices-modal')?.classList.add('hidden');
+}
+
+function filterUnpaidInvoices(query) {
+  const list = document.getElementById('unpaid-invoices-list');
+  if (!list) return;
+
+  const q = String(query || '').trim().toLowerCase();
+
+  const matches = unpaidInvoices.filter(invoice =>
+    !q ||
+    invoice.reference.toLowerCase().includes(q) ||
+    invoice.customerName.toLowerCase().includes(q)
+  );
+
+  if (!matches.length) {
+    list.innerHTML = '<div class="p-5 text-center text-sm text-[#8b949e]">No unpaid invoices found.</div>';
+    return;
+  }
+
+  list.innerHTML = matches.map(invoice => `
+    <div class="px-4 py-3 border-b border-[#21262d]">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="font-semibold text-white truncate">${escapeHtml(invoice.reference)}</div>
+          <div class="text-xs text-[#8b949e] mt-0.5">${escapeHtml(invoice.customerName)} · ${escapeHtml(formatInvoiceDate(invoice.issueDate))}</div>
+        </div>
+        <div class="text-sm font-semibold text-[#3fb950] whitespace-nowrap">₱${invoice.outstanding.toFixed(2)}</div>
+      </div>
+      <div class="mt-1 text-xs text-[#8b949e]">Invoice ₱${invoice.total.toFixed(2)} · Paid ₱${invoice.paid.toFixed(2)}</div>
+      <button type="button" onclick="receivePaymentForInvoice('${invoice.key}')" class="mt-2 w-full px-3 py-2 rounded-md bg-[#238636] text-white text-xs font-medium hover:bg-[#2ea043]">
+        Receive Payment
+      </button>
+    </div>
+  `).join('');
+}
+
+function getActivePaymentAccountsForSelection() {
+  return (paymentAccounts || []).filter(record => {
+    const item = record.item || record.account || record;
+    return item && !Boolean(item.inactive);
+  });
+}
+
+function paymentAccountDisplayName(record) {
+  const item = record.item || record.account || record;
+  return item?.name || item?.accountName || 'Unnamed account';
+}
+
+function paymentAccountDisplayKey(record) {
+  return record?.key || record?.item?.key || record?.account?.key || '';
+}
+
+function receivePaymentForInvoice(invoiceKey) {
+  const invoice = unpaidInvoices.find(i => i.key === invoiceKey);
+  if (!invoice) return;
+
+  const activeAccounts = getActivePaymentAccountsForSelection();
+  if (!activeAccounts.length) {
+    alert('No active bank or cash accounts are available for payment.');
+    return;
+  }
+
+  const select = document.getElementById('payment-account-select');
+  if (!select) return;
+
+  select.innerHTML = activeAccounts.map(account => `
+    <option value="${escapeHtml(paymentAccountDisplayKey(account))}">
+      ${escapeHtml(paymentAccountDisplayName(account))}
+    </option>
+  `).join('');
+
+  window.posPaymentInvoice = {
+    key: invoice.key,
+    reference: invoice.reference,
+    issueDate: invoice.issueDate,
+    customerKey: invoice.customerKey,
+    customerName: invoice.customerName,
+    total: invoice.total,
+    paid: invoice.paid,
+    outstanding: invoice.outstanding
+  };
+
+  document.getElementById('payment-invoice-info').textContent =
+    `Invoice ${invoice.reference} · Outstanding ₱${invoice.outstanding.toFixed(2)}`;
+
+  document.getElementById('payment-amount').value = invoice.outstanding.toFixed(2);
+  document.getElementById('payment-error')?.classList.add('hidden');
+
+  closeUnpaidInvoices();
+  document.getElementById('payment-modal')?.classList.remove('hidden');
 }
 
 </script>
@@ -1123,6 +1436,23 @@ async function createReceiptForLastInvoice() {
         <button type="button" id="record-payment-button" onclick="createReceiptForLastInvoice()" class="flex-1 px-3 py-2 rounded-md bg-[#238636] text-white text-xs font-medium hover:bg-[#2ea043]">Record Payment</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="unpaid-invoices-modal" class="hidden fixed inset-0 z-[115] bg-black/60 p-4">
+  <div class="max-w-md mx-auto mt-10 bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
+      <div>
+        <div class="font-semibold text-white">Unpaid Sales Invoices</div>
+        <div class="text-xs text-[#8b949e]">Select an invoice to receive payment.</div>
+      </div>
+      <button type="button" onclick="closeUnpaidInvoices()" class="text-[#8b949e] hover:text-white text-xl leading-none">&times;</button>
+    </div>
+    <div class="px-4 py-3 border-b border-[#30363d]">
+      <input id="unpaid-invoice-search" type="text" placeholder="Search invoice or customer..." oninput="filterUnpaidInvoices(this.value)" class="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-sm text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff]">
+    </div>
+    <div id="unpaid-invoices-status" class="px-4 py-2 text-xs text-[#8b949e]"></div>
+    <div id="unpaid-invoices-list" class="max-h-[55vh] overflow-y-auto"></div>
   </div>
 </div>
 </body>
