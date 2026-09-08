@@ -68,9 +68,13 @@
   <!-- Header & Sync Control Bar -->
   <header class="p-4 border-b border-[#30363d] bg-[#1c2128]">
     <div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+  <button type="button" onclick="parkCurrentOrder()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Park</button>
+  <button type="button" onclick="openParkedOrders()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Parked <span id="parked-orders-count" class="text-[#8b949e]">(0)</span></button>
+</div>
       <div>
         <span class="text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">Manager.io POS</span>
-        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.1</h1>
+        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.2</h1>
       </div>
       <button id="load-btn" onclick="loadPosData()" class="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95">
         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
@@ -561,6 +565,151 @@ document.addEventListener('click', function(event) {
 });
 
 document.addEventListener('DOMContentLoaded',()=>{ lucide.createIcons(); renderCart(); });
+
+// -----------------------------------------------------------------------------
+// Parked Orders
+// -----------------------------------------------------------------------------
+let parkedOrders = [];
+let nextParkedOrderNumber = 1;
+
+function parkedOrderTotal(order) {
+  return order.cart.reduce((sum, line) => sum + (Number(line.price) || 0) * (Number(line.qty) || 0), 0);
+}
+
+function getActiveCustomerName() {
+  const select = document.getElementById('customer-select');
+  return select?.options[select.selectedIndex]?.textContent?.trim() || 'Walk-in Customer';
+}
+
+function parkCurrentOrder() {
+  if (!cart.length) {
+    alert('There are no items in the current order to park.');
+    return;
+  }
+
+  const customerSelect = document.getElementById('customer-select');
+
+  parkedOrders.push({
+    id: crypto.randomUUID(),
+    number: String(nextParkedOrderNumber++).padStart(3, '0'),
+    parkedAt: new Date().toISOString(),
+    customerKey: customerSelect?.value || '',
+    customerName: getActiveCustomerName(),
+    cart: cart.map(line => ({ ...line }))
+  });
+
+  cart = [];
+  renderCart();
+  updateParkedOrdersCount();
+
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) {
+    searchInput.value = '';
+    closeInventoryDropdown();
+    searchInput.focus();
+  }
+
+  alert('Order parked.');
+}
+
+function openParkedOrders() {
+  renderParkedOrders();
+  document.getElementById('parked-orders-modal')?.classList.remove('hidden');
+}
+
+function closeParkedOrders() {
+  document.getElementById('parked-orders-modal')?.classList.add('hidden');
+}
+
+function renderParkedOrders() {
+  const list = document.getElementById('parked-orders-list');
+  if (!list) return;
+
+  if (!parkedOrders.length) {
+    list.innerHTML = '<div class="p-5 text-center text-sm text-[#8b949e]">No parked orders.</div>';
+    updateParkedOrdersCount();
+    return;
+  }
+
+  list.innerHTML = parkedOrders.map(order => {
+    const total = parkedOrderTotal(order);
+    const items = order.cart.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+
+    return `
+      <div class="px-4 py-3 border-b border-[#21262d]">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="font-semibold text-white">Order #${escapeHtml(order.number)}</div>
+            <div class="text-xs text-[#8b949e] mt-0.5">${escapeHtml(order.customerName)} · ${items} item${items === 1 ? '' : 's'}</div>
+          </div>
+          <div class="text-sm font-semibold text-[#3fb950]">₱${total.toFixed(2)}</div>
+        </div>
+        <div class="mt-2 flex gap-2">
+          <button type="button" onclick="retrieveParkedOrder('${order.id}')" class="flex-1 px-3 py-2 rounded-md bg-[#238636] text-white text-xs font-medium hover:bg-[#2ea043]">Retrieve</button>
+          <button type="button" onclick="deleteParkedOrder('${order.id}')" class="px-3 py-2 rounded-md border border-[#30363d] text-[#f85149] text-xs hover:bg-[#21262d]">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  updateParkedOrdersCount();
+}
+
+function retrieveParkedOrder(id) {
+  if (cart.length) {
+    alert('Please park or clear the current order before retrieving another order.');
+    return;
+  }
+
+  const index = parkedOrders.findIndex(order => order.id === id);
+  if (index < 0) return;
+
+  const order = parkedOrders.splice(index, 1)[0];
+  cart = order.cart.map(line => ({ ...line }));
+
+  const customerSelect = document.getElementById('customer-select');
+  if (customerSelect && order.customerKey) {
+    const exists = Array.from(customerSelect.options).some(o => o.value === order.customerKey);
+    if (exists) customerSelect.value = order.customerKey;
+  }
+
+  renderCart();
+  updateParkedOrdersCount();
+  closeParkedOrders();
+  document.getElementById('search-input')?.focus();
+
+  alert(`Order #${order.number} retrieved. You can add or remove items, change quantities, then park it again or proceed to checkout.`);
+}
+
+function deleteParkedOrder(id) {
+  const index = parkedOrders.findIndex(order => order.id === id);
+  if (index < 0) return;
+
+  const order = parkedOrders[index];
+  if (!confirm(`Delete parked Order #${order.number}?`)) return;
+
+  parkedOrders.splice(index, 1);
+  renderParkedOrders();
+}
+
+function updateParkedOrdersCount() {
+  const el = document.getElementById('parked-orders-count');
+  if (el) el.textContent = `(${parkedOrders.length})`;
+}
+
 </script>
+
+<div id="parked-orders-modal" class="hidden fixed inset-0 z-[100] bg-black/60 p-4">
+  <div class="max-w-md mx-auto mt-12 bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
+      <div>
+        <div class="font-semibold text-white">Parked Orders</div>
+        <div class="text-xs text-[#8b949e]">Retrieve an order to add, remove, or change items.</div>
+      </div>
+      <button type="button" onclick="closeParkedOrders()" class="text-[#8b949e] hover:text-white text-xl leading-none">&times;</button>
+    </div>
+    <div id="parked-orders-list" class="max-h-[60vh] overflow-y-auto"></div>
+  </div>
+</div>
 </body>
 </html>
