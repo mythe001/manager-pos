@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Manager.io POS — V2 Full Window</title>
+<title>Manager.io POS — V1</title>
 <!-- Tailwind CSS via CDN for rapid mobile styling -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- Lucide Icons -->
@@ -22,32 +22,60 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+    .inventory-dropdown-item {
+      width: 100%;
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid #21262d;
+      background: #0d1117;
+      color: #fff;
+      cursor: pointer;
+    }
+    .inventory-dropdown-item:last-child { border-bottom: 0; }
+    .inventory-dropdown-item:hover,
+    .inventory-dropdown-item.active { background: #161b22; }
+    .inventory-dropdown-item.disabled {
+      cursor: not-allowed;
+      opacity: .55;
+    }
+    .inventory-dropdown-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 3px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    .inventory-dropdown-price {
+      color: #3fb950;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .inventory-dropdown-empty {
+      padding: 12px;
+      font-size: 12px;
+      color: #8b949e;
+    }
+
 </style>
 </head>
-<body class="min-h-screen pb-28 overflow-x-hidden">
+<body class="min-h-screen pb-24">
 
-<div class="w-full min-h-screen bg-[#161b22] relative flex flex-col">
+<div class="max-w-md mx-auto min-h-screen bg-[#161b22] border-x border-[#30363d] relative flex flex-col">
 
   <!-- Header & Sync Control Bar -->
   <header class="p-4 border-b border-[#30363d] bg-[#1c2128]">
-    <div id="standalone-banner" class="hidden mb-3 rounded-lg border border-[#2386364d] bg-[#2386361a] px-3 py-2 text-[11px] text-[#3fb950]">
-      Full-window POS mode · Manager connection is relayed through the original Manager tab.
-    </div>
     <div class="flex items-center justify-between mb-2">
       <div>
         <span class="text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">Manager.io POS</span>
-        <h1 class="text-lg font-bold text-white">Manager.io POS — Development</h1>
+        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.1</h1>
       </div>
-      <div class="flex items-center gap-2">
-        <button id="open-pos-btn" onclick="openStandalonePos()" class="bg-[#1f6feb] hover:bg-[#388bfd] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95">
-          <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-          <span>Full Window</span>
-        </button>
-        <button id="load-btn" onclick="loadPosData()" class="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95">
-          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-          <span>Sync Ledger</span>
-        </button>
-      </div>
+      <button id="load-btn" onclick="loadPosData()" class="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95">
+        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+        <span>Sync Ledger</span>
+      </button>
     </div>
 
     <!-- Progress & Sync Status -->
@@ -60,7 +88,7 @@
   </header>
 
   <!-- Main POS Screen Area -->
-  <main class="w-full max-w-6xl mx-auto p-4 sm:p-5 lg:p-6 flex-1 space-y-4">
+  <main class="p-4 flex-1 space-y-4">
 
     <!-- Step 1: Customer Selector -->
     <div class="bg-[#21262d] border border-[#30363d] p-3 rounded-xl flex items-center justify-between">
@@ -81,13 +109,10 @@
     <!-- Search Bar -->
     <div class="relative">
       <i data-lucide="search" class="w-4 h-4 text-[#8b949e] absolute left-3.5 top-3"></i>
-      <input 
-        type="text" 
-        id="search-input" 
-        placeholder="Search inventory items..." 
-        oninput="handleSearch(this.value)"
-        class="w-full bg-[#21262d] border border-[#30363d] rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-[#58a6ff]"
-      />
+      <div class="relative">
+  <input type="text" id="search-input" placeholder="Search products by name or code..." oninput="handleSearch(this.value)" onfocus="handleSearch(this.value)" onkeydown="handleSearchKeydown(event)" autocomplete="off" class="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-sm text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff]">
+  <div id="inventory-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-50 bg-[#0d1117] border border-[#30363d] rounded-md shadow-lg overflow-hidden"></div>
+</div>
     </div>
 
     <!-- Step 2: Bestsellers Quick-Add Buttons -->
@@ -96,7 +121,7 @@
         <span class="text-xs font-bold text-[#8b949e] uppercase tracking-wider">Top Items (Quick Add)</span>
         <span id="item-count" class="text-[10px] text-[#8b949e]">0 items</span>
       </div>
-      <div id="bestsellers-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+      <div id="bestsellers-grid" class="grid grid-cols-5 gap-1.5">
         <div class="col-span-5 text-center py-4 text-xs text-[#8b949e] bg-[#21262d] rounded-xl border border-dashed border-[#30363d]">
           Sync data to view inventory
         </div>
@@ -118,7 +143,7 @@
   </main>
 
   <!-- Step 4: Checkout Footer -->
-  <footer class="fixed bottom-0 left-0 right-0 bg-[#1c2128] border-t border-[#30363d] p-4 z-10">
+  <footer class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#1c2128] border-t border-[#30363d] p-4 z-10">
     <div class="flex items-center justify-between mb-3">
       <span class="text-xs text-[#8b949e] font-medium">Total Amount</span>
       <span id="cart-total" class="text-2xl font-extrabold text-white">₱0.00</span>
@@ -132,230 +157,30 @@
 </div>
 
 <script>
-/* ═════════════════════════════════════════════════════════════
-   MANAGER API BRIDGE + FULL-WINDOW TAB RELAY
-
-   Embedded mode:
-     POS iframe -> Manager parent via postMessage.
-
-   Standalone mode:
-     POS tab -> opener iframe -> Manager parent.
-     Manager responses are relayed back through the opener.
-
-   This lets the POS use a normal browser tab while retaining the
-   Manager API connection established by the extension iframe.
-═════════════════════════════════════════════════════════════ */
-
-const IS_STANDALONE = new URLSearchParams(location.search).get('pos') === 'standalone';
-let standalonePopup = null;
-const pendingApiRequests = new Map();
-
-function makeRequestId() {
-  return (crypto && crypto.randomUUID)
-    ? crypto.randomUUID()
-    : 'pos-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-}
-
-function getManagerBridgeTarget() {
-  if (IS_STANDALONE) {
-    // The standalone tab was opened by the Manager extension iframe.
-    if (!window.opener) {
-      throw new Error('This POS tab was opened without a Manager extension opener.');
-    }
-    return window.opener;
-  }
-
-  if (window.parent === window) {
-    throw new Error('Manager POS must be opened from inside Manager.io.');
-  }
-
-  return window.parent;
-}
-
-function postMessageWithResponse(message, timeoutMs = 30000) {
+function postMessageWithResponse(message) {
   return new Promise((resolve, reject) => {
-    const requestId = makeRequestId();
-
+    const requestId = crypto.randomUUID();
     const timer = setTimeout(() => {
-      pendingApiRequests.delete(requestId);
-      reject(new Error(
-        IS_STANDALONE
-          ? 'Timeout communicating with Manager. Keep the original Manager tab open.'
-          : 'Timeout communicating with Manager.io.'
-      ));
-    }, timeoutMs);
-
-    pendingApiRequests.set(requestId, { resolve, reject, timer });
-
-    try {
-      const target = getManagerBridgeTarget();
-
-      if (IS_STANDALONE) {
-        target.postMessage({
-          type: 'manager-pos-api-request',
-          ...message,
-          requestId
-        }, '*');
-      } else {
-        target.postMessage({
-          ...message,
-          requestId
-        }, '*');
-      }
-    } catch (err) {
-      clearTimeout(timer);
-      pendingApiRequests.delete(requestId);
-      reject(err);
-    }
-  });
-}
-
-function resolveApiResponse(data) {
-  if (!data || !data.requestId) return false;
-  const pending = pendingApiRequests.get(data.requestId);
-  if (!pending) return false;
-
-  clearTimeout(pending.timer);
-  pendingApiRequests.delete(data.requestId);
-  pending.resolve(data.body);
-  return true;
-}
-
-/*
- * Embedded extension:
- * 1. Accept API requests from the standalone tab.
- * 2. Forward them to Manager.
- * 3. Relay Manager's API response back to the standalone tab.
- */
-if (!IS_STANDALONE) {
-  window.addEventListener('message', (event) => {
-    const data = event && event.data;
-    if (!data) return;
-
-    // Standalone POS -> extension iframe -> Manager.
-    if (data.type === 'manager-pos-api-request' &&
-        event.source === standalonePopup) {
-      const forwarded = {
-        type: 'api-request',
-        method: data.method,
-        path: data.path,
-        requestId: data.requestId
-      };
-
-      if (data.body !== undefined && data.body !== null) {
-        forwarded.body = data.body;
-      }
-
-      window.parent.postMessage(forwarded, '*');
-      return;
-    }
-
-    // Manager -> extension iframe.
-    if (event.source === window.parent &&
-        String(data.type || '').endsWith('-response')) {
-
-      // Resolve requests made by the embedded page itself.
-      resolveApiResponse(data);
-
-      // Relay the same Manager response to the standalone tab.
-      if (standalonePopup && !standalonePopup.closed && data.requestId) {
-        try {
-          standalonePopup.postMessage(data, '*');
-        } catch (e) {
-          console.warn('Could not relay Manager response to POS tab:', e);
-        }
+      window.removeEventListener('message', handler);
+      reject(new Error('Timeout — is this running inside Manager.io?'));
+    }, 30000);
+    function handler(event) {
+      if (event.data?.type?.endsWith('-response') &&
+          event.data?.requestId === requestId) {
+        clearTimeout(timer);
+        window.removeEventListener('message', handler);
+        resolve(event.data.body);
       }
     }
-  });
-}
-
-/*
- * Standalone POS:
- * The opener iframe relays Manager responses to this tab.
- */
-if (IS_STANDALONE) {
-  window.addEventListener('message', (event) => {
-    const data = event && event.data;
-    if (!data) return;
-
-    // The expected source is the Manager extension iframe that opened us.
-    if (event.source === window.opener &&
-        String(data.type || '').endsWith('-response')) {
-      resolveApiResponse(data);
-    }
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ ...message, requestId }, '*');
   });
 }
 
 async function apiCall(method, path, body) {
-  const msg = { type: 'api-request', method, path };
+  const msg = { type:'api-request', method, path };
   if (body !== undefined && body !== null) msg.body = body;
   return postMessageWithResponse(msg);
-}
-
-function openStandalonePos() {
-  if (IS_STANDALONE) return;
-
-  const url = new URL(window.location.href);
-  url.searchParams.set('pos', 'standalone');
-
-  // Do NOT use noopener: the standalone tab needs its opener relay.
-  const popup = window.open(url.toString(), 'manager-pos-standalone');
-
-  if (!popup) {
-    alert(
-      'The browser blocked the new POS tab.\n\n' +
-      'Please allow pop-ups for Manager.io, then tap Full Window again.'
-    );
-    return;
-  }
-
-  standalonePopup = popup;
-
-  // Give the new tab a moment to load, then focus it.
-  try { popup.focus(); } catch (e) {}
-
-  const btn = document.getElementById('open-pos-btn');
-  if (btn) {
-    btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i><span>POS Opened</span>';
-    btn.disabled = true;
-    btn.classList.add('opacity-70');
-    if (window.lucide) lucide.createIcons();
-  }
-}
-
-async function tryAutoOpenStandalone() {
-  if (IS_STANDALONE) return;
-
-  // Auto-opening is attempted once. Browsers may block it because the
-  // extension iframe load is not always considered a direct user gesture.
-  try {
-    const popup = window.open(
-      (() => {
-        const u = new URL(window.location.href);
-        u.searchParams.set('pos', 'standalone');
-        return u.toString();
-      })(),
-      'manager-pos-standalone'
-    );
-
-    if (popup) {
-      standalonePopup = popup;
-      try { popup.focus(); } catch (e) {}
-
-      const btn = document.getElementById('open-pos-btn');
-      if (btn) {
-        btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i><span>POS Opened</span>';
-        btn.disabled = true;
-        btn.classList.add('opacity-70');
-        if (window.lucide) lucide.createIcons();
-      }
-      return true;
-    }
-  } catch (e) {
-    console.info('Automatic POS tab launch was blocked:', e);
-  }
-
-  return false;
 }
 
 const PAGE_SIZE = 2000;
@@ -514,7 +339,7 @@ function renderCustomerDropdown(customers) {
 function renderBestsellers(items) {
   const box=document.getElementById('bestsellers-grid');
   if(!items.length) {
-    box.innerHTML='<div class="col-span-full text-center py-4 text-xs text-[#8b949e]">No items found</div>';
+    box.innerHTML='<div class="col-span-5 text-center py-4 text-xs text-[#8b949e]">No items found</div>';
     return;
   }
   box.innerHTML=items.map(r=>{
@@ -530,10 +355,149 @@ function renderBestsellers(items) {
   }).join('');
 }
 
+
+let searchDropdownIndex = -1;
+let searchDropdownResults = [];
+
+function closeInventoryDropdown() {
+  const dropdown = document.getElementById('inventory-dropdown');
+  if (dropdown) dropdown.classList.add('hidden');
+  searchDropdownIndex = -1;
+  searchDropdownResults = [];
+}
+
+function getSearchableInventory() {
+  return inventoryList.filter(r => {
+    const item = r.item || r;
+    const inactive = Boolean(item.inactive);
+    const price = Number(itemPrice(r) || 0);
+    return !inactive && price > 0;
+  });
+}
+
+function getInventorySearchResults(query) {
+  const base = getSearchableInventory();
+  const q = query.trim().toLowerCase();
+
+  if (!q) return base.slice(0, 12);
+
+  return base.filter(r => {
+    const name = itemName(r).toLowerCase();
+    const code = itemCode(r).toLowerCase();
+    return name.includes(q) || code.includes(q);
+  }).slice(0, 12);
+}
+
+function renderInventoryDropdown(query) {
+  const dropdown = document.getElementById('inventory-dropdown');
+  if (!dropdown) return;
+
+  searchDropdownResults = getInventorySearchResults(query);
+  searchDropdownIndex = -1;
+
+  if (!searchDropdownResults.length) {
+    dropdown.innerHTML = `<div class="inventory-dropdown-empty">No matching products found.</div>`;
+    dropdown.classList.remove('hidden');
+    return;
+  }
+
+  dropdown.innerHTML = searchDropdownResults.map((r, i) => {
+    const key = r.key;
+    const name = escapeHtml(itemName(r));
+    const code = escapeHtml(itemCode(r));
+    const price = Number(itemPrice(r) || 0);
+    const onHand = Number(getQtyOwned(key) || 0);
+    const available = availableQty(key);
+
+    return `
+      <button type="button"
+        class="inventory-dropdown-item ${available <= 0 ? 'disabled' : ''}"
+        ${available <= 0 ? 'disabled' : ''}
+        onclick="selectInventoryFromDropdown('${String(key).replace(/'/g, "\\'")}')"
+        data-search-index="${i}">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="font-medium truncate">${name}</div>
+            <div class="inventory-dropdown-meta">
+              <span>${code ? code + ' · ' : ''}On hand: ${formatQty(onHand)}</span>
+            </div>
+          </div>
+          <div class="inventory-dropdown-price">₱${price.toFixed(2)}</div>
+        </div>
+      </button>
+    `;
+  }).join('');
+
+  dropdown.classList.remove('hidden');
+}
+
+function selectInventoryFromDropdown(key) {
+  if (availableQty(key) <= 0) {
+    const item = inventoryList.find(r => r.key === key);
+    if (item) alert(`No available stock for ${itemName(item)}.`);
+    return;
+  }
+
+  addToCart(key);
+
+  const input = document.getElementById('search-input');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+
+  renderInventoryDropdown('');
+}
+
+function handleSearchKeydown(event) {
+  const dropdown = document.getElementById('inventory-dropdown');
+  if (!dropdown || dropdown.classList.contains('hidden')) return;
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeInventoryDropdown();
+    return;
+  }
+
+  if (!searchDropdownResults.length) return;
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    searchDropdownIndex = Math.min(searchDropdownIndex + 1, searchDropdownResults.length - 1);
+    updateSearchDropdownHighlight();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    searchDropdownIndex = Math.max(searchDropdownIndex - 1, 0);
+    updateSearchDropdownHighlight();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const index = searchDropdownIndex >= 0 ? searchDropdownIndex : 0;
+    const selected = searchDropdownResults[index];
+    if (selected && availableQty(selected.key) > 0) {
+      selectInventoryFromDropdown(selected.key);
+    }
+  }
+}
+
+function updateSearchDropdownHighlight() {
+  document.querySelectorAll('#inventory-dropdown [data-search-index]').forEach(el => {
+    el.classList.toggle('active', Number(el.dataset.searchIndex) === searchDropdownIndex);
+  });
+}
+
 function handleSearch(query) {
-  const q=query.trim().toLowerCase();
-  const list=q ? inventoryList.filter(r=>itemName(r).toLowerCase().includes(q)||itemCode(r).toLowerCase().includes(q)).slice(0,5)
-               : inventoryList.slice(0,5);
+  const q = query.trim().toLowerCase();
+
+  renderInventoryDropdown(q);
+
+  // Preserve the existing V1 Quick Add behavior.
+  const list = q
+    ? inventoryList.filter(r =>
+        itemName(r).toLowerCase().includes(q) ||
+        itemCode(r).toLowerCase().includes(q)
+      ).slice(0, 5)
+    : inventoryList.slice(0, 5);
+
   renderBestsellers(list);
 }
 
@@ -588,45 +552,15 @@ function renderCart() {
   lucide.createIcons();
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-  lucide.createIcons();
-  renderCart();
 
-  const openBtn = document.getElementById('open-pos-btn');
-  const banner = document.getElementById('standalone-banner');
-
-  if (IS_STANDALONE) {
-    if (banner) banner.classList.remove('hidden');
-
-    if (openBtn) {
-      openBtn.innerHTML = '<i data-lucide="arrow-left" class="w-3.5 h-3.5"></i><span>Back to Manager</span>';
-      openBtn.onclick = () => {
-        try {
-          if (window.opener && !window.opener.closed) {
-            window.opener.focus();
-            window.close();
-            return;
-          }
-        } catch (e) {}
-        history.back();
-      };
-      lucide.createIcons();
-    }
-
-    // The standalone tab should load data immediately.
-    loadPosData();
-    return;
-  }
-
-  // In embedded mode, try to open the full-window POS automatically.
-  // If the browser blocks it, the Full Window button remains available.
-  const opened = await tryAutoOpenStandalone();
-
-  // Keep the embedded UI functional as a fallback.
-  if (!opened) {
-    await loadPosData();
+document.addEventListener('click', function(event) {
+  const searchArea = document.getElementById('search-input')?.parentElement;
+  if (searchArea && !searchArea.contains(event.target)) {
+    closeInventoryDropdown();
   }
 });
+
+document.addEventListener('DOMContentLoaded',()=>{ lucide.createIcons(); renderCart(); });
 </script>
 </body>
 </html>
