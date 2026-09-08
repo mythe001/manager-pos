@@ -23,42 +23,41 @@
     scrollbar-width: none;
   }
 
-    .inventory-dropdown-item {
-      width: 100%;
-      text-align: left;
-      padding: 10px 12px;
-      border-bottom: 1px solid #21262d;
-      background: #0d1117;
-      color: #fff;
-      cursor: pointer;
-    }
-    .inventory-dropdown-item:last-child { border-bottom: 0; }
-    .inventory-dropdown-item:hover,
-    .inventory-dropdown-item.active { background: #161b22; }
-    .inventory-dropdown-item.disabled {
-      cursor: not-allowed;
-      opacity: .55;
-    }
-    .inventory-dropdown-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: 3px;
-      font-size: 11px;
-      color: #8b949e;
-    }
-    .inventory-dropdown-price {
-      color: #3fb950;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .inventory-dropdown-empty {
-      padding: 12px;
-      font-size: 12px;
-      color: #8b949e;
-    }
-
+  .inventory-dropdown-item {
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid #21262d;
+    background: #0d1117;
+    color: #fff;
+    cursor: pointer;
+  }
+  .inventory-dropdown-item:last-child { border-bottom: 0; }
+  .inventory-dropdown-item:hover,
+  .inventory-dropdown-item.active { background: #161b22; }
+  .inventory-dropdown-item.disabled {
+    cursor: not-allowed;
+    opacity: .55;
+  }
+  .inventory-dropdown-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 3px;
+    font-size: 11px;
+    color: #8b949e;
+  }
+  .inventory-dropdown-price {
+    color: #3fb950;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .inventory-dropdown-empty {
+    padding: 12px;
+    font-size: 12px;
+    color: #8b949e;
+  }
 </style>
 </head>
 <body class="min-h-screen pb-24">
@@ -68,11 +67,11 @@
   <!-- Header & Sync Control Bar -->
   <header class="p-4 border-b border-[#30363d] bg-[#1c2128]">
     <div class="flex items-center justify-between mb-2">
-<div class="flex items-center gap-2">
-  <button type="button" onclick="parkCurrentOrder()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Park</button>
-  <button type="button" onclick="openParkedOrders()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Parked <span id="parked-orders-count" class="text-[#8b949e]">(0)</span></button>
-  <button type="button" onclick="openUnpaidInvoices()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Receive Payment</button>
-</div>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="parkCurrentOrder()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Park</button>
+        <button type="button" onclick="openParkedOrders()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Parked <span id="parked-orders-count" class="text-[#8b949e]">(0)</span></button>
+        <button type="button" onclick="openUnpaidInvoices()" class="px-2.5 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Receive Payment</button>
+      </div>
       <div>
         <span class="text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">Manager.io POS</span>
         <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.5.3.1</h1>
@@ -115,9 +114,9 @@
     <div class="relative">
       <i data-lucide="search" class="w-4 h-4 text-[#8b949e] absolute left-3.5 top-3"></i>
       <div class="relative">
-  <input type="text" id="search-input" placeholder="Search products by name or code..." oninput="handleSearch(this.value)" onfocus="handleSearch(this.value)" onkeydown="handleSearchKeydown(event)" autocomplete="off" class="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-sm text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff]">
-  <div id="inventory-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-50 bg-[#0d1117] border border-[#30363d] rounded-md shadow-lg overflow-hidden"></div>
-</div>
+        <input type="text" id="search-input" placeholder="Search products by name or code..." oninput="handleSearch(this.value)" onfocus="handleSearch(this.value)" onkeydown="handleSearchKeydown(event)" autocomplete="off" class="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-sm text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff]">
+        <div id="inventory-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-50 bg-[#0d1117] border border-[#30363d] rounded-md shadow-lg overflow-hidden"></div>
+      </div>
     </div>
 
     <!-- Step 2: Bestsellers Quick-Add Buttons -->
@@ -174,7 +173,8 @@ function postMessageWithResponse(message) {
           event.data?.requestId === requestId) {
         clearTimeout(timer);
         window.removeEventListener('message', handler);
-        resolve(event.data.body);
+        if (event.data.error) reject(new Error(event.data.error));
+        else resolve(event.data.body);
       }
     }
     window.addEventListener('message', handler);
@@ -360,7 +360,6 @@ function renderBestsellers(items) {
   }).join('');
 }
 
-
 let searchDropdownIndex = -1;
 let searchDropdownResults = [];
 
@@ -495,7 +494,6 @@ function handleSearch(query) {
 
   renderInventoryDropdown(q);
 
-  // Preserve the existing V1 Quick Add behavior.
   const list = q
     ? inventoryList.filter(r =>
         itemName(r).toLowerCase().includes(q) ||
@@ -556,7 +554,6 @@ function renderCart() {
     </div></div>`).join('');
   lucide.createIcons();
 }
-
 
 document.addEventListener('click', function(event) {
   const searchArea = document.getElementById('search-input')?.parentElement;
@@ -698,7 +695,9 @@ function updateParkedOrdersCount() {
   if (el) el.textContent = `(${parkedOrders.length})`;
 }
 
-
+// -----------------------------------------------------------------------------
+// Checkout
+// -----------------------------------------------------------------------------
 let checkoutBusy = false;
 
 function calculateCartTotal() {
@@ -787,7 +786,6 @@ async function createSalesInvoiceFromCart() {
     return;
   }
 
-  // Final stock validation immediately before posting.
   for (const line of cart) {
     const available = availableQty(line.key);
     if (available < Number(line.qty || 0)) {
@@ -803,7 +801,6 @@ async function createSalesInvoiceFromCart() {
     const issueDate = todayISO();
     const reference = generatePOSReference();
 
-    // Payload pattern taken from the working Toolkit-creator POS.
     const payload = {
       value: {
         issueDate: issueDate + 'T00:00:00',
@@ -836,7 +833,6 @@ async function createSalesInvoiceFromCart() {
       throw new Error('Manager did not return the created Sales Invoice key.');
     }
 
-    // Keep the created transaction for the payment/receipt step we will add next.
     window.posLastCreatedInvoice = {
       key: invoiceKey,
       reference,
@@ -857,7 +853,8 @@ async function createSalesInvoiceFromCart() {
       searchInput.focus();
     }
 
-    alert(`Sales Invoice ${reference} created successfully.`); openPaymentForLastInvoice();
+    alert(`Sales Invoice ${reference} created successfully.`); 
+    openPaymentForLastInvoice();
   } catch (error) {
     console.error('Sales Invoice creation failed:', error);
     showCheckoutError(error?.message || 'Unable to create the Sales Invoice.');
@@ -866,10 +863,8 @@ async function createSalesInvoiceFromCart() {
   }
 }
 
-
 // -----------------------------------------------------------------------------
 // Payment -> Manager Receipt
-// Only ACTIVE bank/cash accounts are offered for payment.
 // -----------------------------------------------------------------------------
 let paymentBusy = false;
 
@@ -943,8 +938,7 @@ function showPaymentError(message) {
   el.classList.remove('hidden');
 }
 
-// Accounts Receivable resolver — mirrors the working Toolkit-creator POS.
-const TEST_BUSINESS_AR_FALLBACK = 'd1489e95-bb28-4f5d-b42e-67d3291b3893';
+// Accounts Receivable Dynamic Resolver
 let cachedDefaultARAccount = undefined;
 let cachedReceiptsForAR = undefined;
 
@@ -952,27 +946,34 @@ async function getDefaultARAccount() {
   if (cachedDefaultARAccount !== undefined) return cachedDefaultARAccount;
 
   try {
-    const [bsData, caData] = await Promise.all([
-      apiCall('GET', '/api4/balance-sheet-account-batch?PageSize=500'),
-      apiCall('GET', '/api4/control-account-batch?PageSize=500')
+    const [bsData, caData, stdData] = await Promise.all([
+      apiCall('GET', '/api4/balance-sheet-account-batch?PageSize=500').catch(() => null),
+      apiCall('GET', '/api4/control-account-batch?PageSize=500').catch(() => null),
+      apiCall('GET', '/api4/account-batch?PageSize=500').catch(() => null)
     ]);
 
     const toItems = data =>
       Array.isArray(data?.items) ? data.items :
       (Array.isArray(data) ? data : []);
 
-    const all = [...toItems(bsData), ...toItems(caData)];
-    const arAccount = all.find(a => a?.item?.isAccountsReceivable === true);
+    const all = [...toItems(bsData), ...toItems(caData), ...toItems(stdData)];
+    
+    // Look for flagged AR account or standard name match
+    const arAccount = all.find(a => 
+      a?.item?.isAccountsReceivable === true ||
+      a?.item?.controlAccountType === 1 ||
+      (a?.item?.name || '').toLowerCase() === 'accounts receivable'
+    );
 
-    cachedDefaultARAccount = arAccount
-      ? arAccount.key
-      : TEST_BUSINESS_AR_FALLBACK;
+    if (arAccount?.key) {
+      cachedDefaultARAccount = arAccount.key;
+      return cachedDefaultARAccount;
+    }
   } catch (err) {
-    console.error('AR lookup failed; using confirmed test-business AR account:', err);
-    cachedDefaultARAccount = TEST_BUSINESS_AR_FALLBACK;
+    console.error('AR account batch lookup failed:', err);
   }
 
-  return cachedDefaultARAccount;
+  return null;
 }
 
 async function getReceiptsForAR() {
@@ -1055,34 +1056,40 @@ async function createReceiptForLastInvoice() {
     const arAccount = await resolveARAccountForCustomer(sale.customerKey);
 
     if (!arAccount) {
-      throw new Error('Could not find the Accounts Receivable account. Payment was not posted.');
+      throw new Error('Could not resolve Accounts Receivable account for this business.');
     }
 
-    // This payload matches the receipt payload used by the working Toolkit POS.
     const payload = {
       value: {
-        date: (sale.issueDate || todayISO()) + 'T00:00:00',
-        reference: sale.reference,
-        paidBy: 1,
+        date: (sale.issueDate || todayISO()).split('T')[0] + 'T00:00:00',
+        reference: sale.reference || '',
+        description: `Payment for Sales Invoice ${sale.reference || ''}`,
+        paidBy: 1, // 1 = Customer
         customer: sale.customerKey,
-        receivedIn,
+        receivedIn: receivedIn,
         lines: [{
           account: arAccount,
           accountsReceivableCustomer: sale.customerKey,
           accountsReceivableSalesInvoice: sale.key,
-          amount
+          amount: amount
         }]
       }
     };
 
-    const key = await apiCall('POST', '/api4/receipt', payload);
+    console.log('Posting Receipt Payload:', payload);
 
-    if (!key) {
-      throw new Error('Manager returned an empty Receipt response. Payment was not confirmed.');
+    const response = await apiCall('POST', '/api4/receipt', payload);
+
+    const key = typeof response === 'string'
+      ? response
+      : (response?.key || response?.value?.key || response?.value || null);
+
+    if (!key && response === undefined) {
+      throw new Error('Manager did not return a valid Receipt key. Payment was not confirmed.');
     }
 
     window.posLastCreatedReceipt = {
-      key,
+      key: key || 'created',
       reference: sale.reference,
       invoiceKey: sale.key,
       customerKey: sale.customerKey,
@@ -1102,12 +1109,8 @@ async function createReceiptForLastInvoice() {
   }
 }
 
-
-
 // -----------------------------------------------------------------------------
-// Receive Payment for existing unpaid Sales Invoices
-// Manager is the source of truth: invoices are retrieved from Sales Invoice
-// batch and their outstanding balances are reduced by receipts linked to them.
+// Unpaid Sales Invoices
 // -----------------------------------------------------------------------------
 let unpaidInvoices = [];
 let unpaidInvoicesBusy = false;
@@ -1143,7 +1146,6 @@ function getInvoiceLines(invoice) {
 function getInvoiceTotal(invoice) {
   const item = recordItem(invoice);
 
-  // Prefer Manager-provided total fields if available.
   const direct = [item.total, item.totalAmount, item.amount]
     .map(Number)
     .find(n => Number.isFinite(n) && n >= 0);
@@ -1356,7 +1358,6 @@ function receivePaymentForInvoice(invoiceKey) {
   closeUnpaidInvoices();
   document.getElementById('payment-modal')?.classList.remove('hidden');
 }
-
 </script>
 
 <div id="parked-orders-modal" class="hidden fixed inset-0 z-[100] bg-black/60 p-4">
