@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Harbour Lane Coffee POS</title>
+<title>Manager.io POS — V1</title>
 <!-- Tailwind CSS via CDN for rapid mobile styling -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- Lucide Icons -->
@@ -33,7 +33,7 @@
     <div class="flex items-center justify-between mb-2">
       <div>
         <span class="text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">Manager.io POS</span>
-        <h1 class="text-lg font-bold text-white">Harbour Lane Coffee</h1>
+        <h1 class="text-lg font-bold text-white">Manager.io POS — Development</h1>
       </div>
       <button id="load-btn" onclick="loadPosData()" class="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95">
         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
@@ -114,7 +114,7 @@
       <span class="text-xs text-[#8b949e] font-medium">Total Amount</span>
       <span id="cart-total" class="text-2xl font-extrabold text-white">₱0.00</span>
     </div>
-    <button id="checkout-btn" disabled onclick="alert('Ready for Step 4 API posting!')" class="w-full bg-[#238636] hover:bg-[#2ea043] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
+    <button id="checkout-btn" disabled onclick="alert('Checkout will be connected after this inventory/on-hand test passes.')" class="w-full bg-[#238636] hover:bg-[#2ea043] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
       <i data-lucide="credit-card" class="w-4 h-4"></i>
       <span>Pay & Create Invoice</span>
     </button>
@@ -123,18 +123,16 @@
 </div>
 
 <script>
-/* ══════════════════════════════════
-   postMessage helper — copied verbatim
-══════════════════════════════════ */
 function postMessageWithResponse(message) {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
     const timer = setTimeout(() => {
       window.removeEventListener('message', handler);
       reject(new Error('Timeout — is this running inside Manager.io?'));
-    }, 15000);
+    }, 30000);
     function handler(event) {
-      if (event.data?.type?.endsWith('-response') && event.data?.requestId === requestId) {
+      if (event.data?.type?.endsWith('-response') &&
+          event.data?.requestId === requestId) {
         clearTimeout(timer);
         window.removeEventListener('message', handler);
         resolve(event.data.body);
@@ -145,179 +143,243 @@ function postMessageWithResponse(message) {
   });
 }
 
-/* ══════════════════════════════════
-   API Fetchers (Inventory & Customers)
-══════════════════════════════════ */
-async function fetchBatch(endpoint, onProgress) {
-  const allItems = [];
-  let nextToken = null;
-  let pageNum = 0;
-  let apiTotal = null;
-
-  do {
-    const path = nextToken
-      ? `${endpoint}?PageSize=99999&next_page_token=${encodeURIComponent(nextToken)}`
-      : `${endpoint}?PageSize=99999`;
-
-    const data = await postMessageWithResponse({ type: 'api-request', method: 'GET', path });
-    const page = Array.isArray(data) ? data : (data.items || data.data || []);
-    allItems.push(...page);
-
-    nextToken = data.next_page_token || data.nextPageToken || data._links?.next?.href || null;
-    if (apiTotal === null) {
-      apiTotal = data.totalCount ?? data.total ?? data.count ?? data._metadata?.totalCount ?? null;
-    }
-
-    pageNum++;
-    if (onProgress) onProgress(allItems.length, apiTotal, pageNum);
-    if (pageNum >= 1000) break;
-  } while (nextToken);
-
-  return allItems;
+async function apiCall(method, path, body) {
+  const msg = { type:'api-request', method, path };
+  if (body !== undefined && body !== null) msg.body = body;
+  return postMessageWithResponse(msg);
 }
 
-/* ══════════════════════════════════
-   POS Application State & Logic
-══════════════════════════════════ */
-let inventoryList = [];
-let customerList = [];
-let cart = [];
+const PAGE_SIZE = 2000;
+async function fetchBatch(endpoint, onProgress) {
+  const all = [];
+  let token = null, skip = 0, useSkip = false, pageNo = 0, total = null;
+
+  while (true) {
+    let path = `${endpoint}?PageSize=${PAGE_SIZE}`;
+    if (useSkip) path += `&Skip=${skip}`;
+    else if (token) path += `&next_page_token=${encodeURIComponent(token)}`;
+
+    const data = await apiCall('GET', path);
+    const page = Array.isArray(data) ? data :
+      (Array.isArray(data?.items) ? data.items :
+       Array.isArray(data?.data) ? data.data : []);
+    all.push(...page);
+
+    if (total === null)
+      total = data?.totalCount ?? data?.total ?? data?.count ?? data?._metadata?.totalCount ?? null;
+
+    pageNo++;
+    onProgress?.(all.length, total, pageNo);
+
+    const next = data?.next_page_token || data?.nextPageToken ||
+      data?.NextPageToken || data?.nextPage || data?._links?.next?.href || null;
+
+    if (next) {
+      token = next;
+      useSkip = false;
+    } else if (page.length >= PAGE_SIZE) {
+      token = null;
+      useSkip = true;
+      skip = all.length;
+    } else break;
+
+    if (total !== null && all.length >= total) break;
+    if (pageNo >= 5000) break;
+  }
+  return all;
+}
+
+const SCALE = 1000000;
+let inventoryList = [], customerList = [], paymentAccounts = [], cart = [];
+const qtyOwned = Object.create(null);
+
+function addQty(k,q) {
+  const n=Number(q);
+  if(k && Number.isFinite(n) && n) qtyOwned[k]=(qtyOwned[k]||0)+Math.round(n*SCALE);
+}
+function subQty(k,q) {
+  const n=Number(q);
+  if(k && Number.isFinite(n) && n) qtyOwned[k]=(qtyOwned[k]||0)-Math.round(n*SCALE);
+}
+function getQtyOwned(k) { return (qtyOwned[k]||0)/SCALE; }
+function formatQty(q) {
+  return Number.isInteger(q) ? String(q) : Number(q).toLocaleString(undefined,{maximumFractionDigits:6});
+}
+function cartQty(k) {
+  const x=cart.find(i=>i.key===k);
+  return x ? Number(x.qty)||0 : 0;
+}
+function availableQty(k) { return getQtyOwned(k)-cartQty(k); }
+
+async function computeQtyOwned(status) {
+  Object.keys(qtyOwned).forEach(k=>delete qtyOwned[k]);
+
+  async function source(path,label) {
+    status(`${label}…`);
+    return fetchBatch(path,(loaded,total,page)=>{
+      status(`${label} · ${loaded.toLocaleString()} loaded`);
+    });
+  }
+
+  const starting = await source('/api4/inventory-item-starting-balance-batch','Starting balances');
+  const purchases = await source('/api4/purchase-invoice-batch','Purchase invoices');
+  const debits = await source('/api4/debit-note-batch','Debit notes');
+  const sales = await source('/api4/sales-invoice-batch','Sales invoices');
+  const credits = await source('/api4/credit-note-batch','Credit notes');
+  const writes = await source('/api4/inventory-write-off-batch','Write-offs');
+
+  starting.forEach(r=>{
+    const d=r.item||r, k=d.inventoryItem, lines=d.qtyOnHandLines||[];
+    if(lines.length) lines.forEach(x=>addQty(k,x.qtyOnHand));
+    else addQty(k,d.qtyOwned??0);
+  });
+  purchases.forEach(r=>(r.item?.lines||[]).forEach(x=>addQty(x.item,x.qty)));
+  debits.forEach(r=>(r.item?.lines||[]).forEach(x=>subQty(x.item,x.qty)));
+  sales.forEach(r=>(r.item?.lines||[]).forEach(x=>subQty(x.item,x.qty)));
+  credits.forEach(r=>(r.item?.lines||[]).forEach(x=>addQty(x.item,x.qty)));
+  writes.forEach(r=>(r.item?.items||[]).forEach(x=>subQty(x.inventoryItem,x.qty)));
+}
+
+function itemData(r) { return r?.item || r || {}; }
+function itemName(r) { const x=itemData(r); return x.itemName || x.nameWithCode || x.name || 'Unnamed Item'; }
+function itemCode(r) { return itemData(r).code || ''; }
+function itemPrice(r) {
+  const x=itemData(r);
+  return x.hasDefaultSalesUnitPrice ? Number(x.defaultSalesUnitPrice)||0 : 0;
+}
+function inactive(r) { return !!itemData(r).inactive; }
+
+function escapeHtml(v) {
+  return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
 
 async function loadPosData() {
-  const btn = document.getElementById('load-btn');
-  const bar = document.getElementById('prog-bar');
-  const status = document.getElementById('status-txt');
-
-  btn.disabled = true;
-  bar.style.width = '10%';
-  status.textContent = 'Fetching Customers & Inventory…';
+  const btn=document.getElementById('load-btn');
+  const bar=document.getElementById('prog-bar');
+  const status=document.getElementById('status-txt');
+  btn.disabled=true; bar.style.width='5%';
 
   try {
-    // 1. Fetch Customers
-    customerList = await fetchBatch('/api4/customer-batch');
+    status.textContent='Loading Manager data…';
+    const [customers,inventory,accounts]=await Promise.all([
+      fetchBatch('/api4/customer-batch'),
+      fetchBatch('/api4/inventory-item-batch'),
+      fetchBatch('/api4/bank-or-cash-account-batch')
+    ]);
+
+    customerList=customers;
+    inventoryList=inventory.filter(r=>!inactive(r));
+    paymentAccounts=accounts;
     renderCustomerDropdown(customerList);
-    bar.style.width = '50%';
+    bar.style.width='30%';
 
-    // 2. Fetch Inventory Items
-    inventoryList = await fetchBatch('/api4/inventory-item-batch');
-    bar.style.width = '100%';
+    await computeQtyOwned(msg=>status.textContent=msg);
 
-    status.textContent = `✓ Synced (${inventoryList.length} items, ${customerList.length} customers)`;
-    btn.disabled = false;
-
-    renderBestsellers(inventoryList.slice(0, 5));
-    document.getElementById('item-count').textContent = `${inventoryList.length} items`;
-
-  } catch (err) {
-    status.textContent = '⚠ ' + err.message;
-    btn.disabled = false;
+    bar.style.width='100%';
+    status.textContent=`✓ Synced · ${inventoryList.length.toLocaleString()} items · ${paymentAccounts.length.toLocaleString()} payment accounts`;
+    document.getElementById('item-count').textContent=`${inventoryList.length.toLocaleString()} items`;
+    renderBestsellers(inventoryList.slice(0,5));
+  } catch(e) {
+    status.textContent='⚠ '+e.message;
+    bar.style.width='0%';
+  } finally {
+    btn.disabled=false;
   }
 }
 
 function renderCustomerDropdown(customers) {
-  const select = document.getElementById('customer-select');
-  select.innerHTML = '<option value="walk-in" class="bg-[#21262d] text-white">Walk-in Customer (Default)</option>';
-
-  customers.forEach((c) => {
-    const item = c.item || c;
-    if (!item.inactive) {
-      const opt = document.createElement('option');
-      opt.value = c.key;
-      opt.textContent = item.name || item.nameWithCode || 'Unnamed Customer';
-      opt.className = 'bg-[#21262d] text-white';
-      select.appendChild(opt);
-    }
+  const select=document.getElementById('customer-select');
+  select.innerHTML='<option value="walk-in" class="bg-[#21262d] text-white">Walk-in Customer (Default)</option>';
+  customers.forEach(r=>{
+    const x=itemData(r);
+    if(x.inactive) return;
+    const o=document.createElement('option');
+    o.value=r.key;
+    o.textContent=x.name||x.nameWithCode||'Unnamed Customer';
+    o.className='bg-[#21262d] text-white';
+    select.appendChild(o);
   });
 }
 
 function renderBestsellers(items) {
-  const container = document.getElementById('bestsellers-grid');
-  if (!items || items.length === 0) {
-    container.innerHTML = `<div class="col-span-5 text-center py-4 text-xs text-[#8b949e]">No items available</div>`;
+  const box=document.getElementById('bestsellers-grid');
+  if(!items.length) {
+    box.innerHTML='<div class="col-span-5 text-center py-4 text-xs text-[#8b949e]">No items found</div>';
     return;
   }
-
-  container.innerHTML = items.map((rec) => {
-    const item = rec.item || rec;
-    const price = item.hasDefaultSalesUnitPrice ? item.defaultSalesUnitPrice : 0;
-    const name = item.itemName || item.nameWithCode || 'Item';
-    
-    return `
-      <button 
-        onclick="addToCart('${rec.key}', '${escape(name)}', ${price})"
-        class="bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] hover:border-[#58a6ff] p-2 rounded-xl text-center active:scale-95 transition-all flex flex-col justify-between items-center h-16"
-      >
-        <span class="text-[11px] font-bold text-white truncate w-full">${name}</span>
-        <span class="text-[10px] font-bold text-[#3fb950]">₱${price.toFixed(2)}</span>
-      </button>
-    `;
+  box.innerHTML=items.map(r=>{
+    const price=itemPrice(r), name=itemName(r), code=itemCode(r);
+    const stock=getQtyOwned(r.key), avail=availableQty(r.key);
+    return `<button ${avail<=0?'disabled':''} onclick="addToCart('${r.key}')"
+      class="bg-[#21262d] hover:bg-[#30363d] disabled:opacity-40 disabled:cursor-not-allowed border border-[#30363d] hover:border-[#58a6ff] p-2 rounded-xl text-center active:scale-95 transition-all flex flex-col justify-between items-center h-20"
+      title="${escapeHtml(name)}${code?' · '+escapeHtml(code):''}">
+      <span class="text-[11px] font-bold text-white truncate w-full">${escapeHtml(name)}</span>
+      <span class="text-[10px] font-bold text-[#3fb950]">₱${price.toFixed(2)}</span>
+      <span class="text-[9px] ${avail<=0?'text-[#f85149]':'text-[#8b949e]'}">On hand: ${formatQty(stock)}</span>
+    </button>`;
   }).join('');
 }
 
 function handleSearch(query) {
-  if (!query.trim()) {
-    renderBestsellers(inventoryList.slice(0, 5));
-    return;
-  }
-  const filtered = inventoryList.filter(i => {
-    const name = (i.item?.itemName || i.item?.nameWithCode || '').toLowerCase();
-    return name.includes(query.toLowerCase());
-  }).slice(0, 5);
-  renderBestsellers(filtered);
+  const q=query.trim().toLowerCase();
+  const list=q ? inventoryList.filter(r=>itemName(r).toLowerCase().includes(q)||itemCode(r).toLowerCase().includes(q)).slice(0,5)
+               : inventoryList.slice(0,5);
+  renderBestsellers(list);
 }
 
-function addToCart(key, name, price) {
-  const unescapedName = unescape(name);
-  const existing = cart.find(i => i.key === key);
-  if (existing) {
-    existing.qty += 1;
-  } else {
-    cart.push({ key, name: unescapedName, price, qty: 1 });
-  }
+function addToCart(key) {
+  const r=inventoryList.find(x=>x.key===key);
+  if(!r) return;
+  if(availableQty(key)<=0) return alert(`No available stock for ${itemName(r)}.`);
+  const line=cart.find(x=>x.key===key);
+  if(line) line.qty++;
+  else cart.push({key,name:itemName(r),price:itemPrice(r),qty:1});
   renderCart();
+  handleSearch(document.getElementById('search-input').value);
+}
+
+function changeCartQty(key,delta) {
+  const line=cart.find(x=>x.key===key);
+  if(!line) return;
+  const next=line.qty+delta;
+  if(next<=0) cart=cart.filter(x=>x.key!==key);
+  else if(next<=getQtyOwned(key)) line.qty=next;
+  else return alert(`Only ${formatQty(getQtyOwned(key))} unit(s) on hand.`);
+  renderCart();
+  handleSearch(document.getElementById('search-input').value);
 }
 
 function clearCart() {
-  cart = [];
-  renderCart();
+  cart=[]; renderCart();
+  handleSearch(document.getElementById('search-input').value);
 }
 
 function renderCart() {
-  const container = document.getElementById('cart-container');
-  const totalEl = document.getElementById('cart-total');
-  const checkoutBtn = document.getElementById('checkout-btn');
+  const box=document.getElementById('cart-container');
+  const total=cart.reduce((s,x)=>s+x.price*x.qty,0);
+  document.getElementById('cart-total').textContent=`₱${total.toFixed(2)}`;
+  document.getElementById('checkout-btn').disabled=!cart.length;
 
-  const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-  totalEl.textContent = `₱${total.toFixed(2)}`;
-
-  if (cart.length === 0) {
-    checkoutBtn.disabled = true;
-    container.className = "bg-[#21262d] border border-[#30363d] rounded-xl p-4 min-h-[140px] flex flex-col justify-center items-center text-center";
-    container.innerHTML = `
-      <i data-lucide="shopping-bag" class="w-8 h-8 text-[#8b949e] opacity-40 mb-2"></i>
-      <p class="text-xs text-[#8b949e]">Your cart is empty.<br>Tap items above to add to sale.</p>
-    `;
-    lucide.createIcons();
-    return;
+  if(!cart.length) {
+    box.className="bg-[#21262d] border border-[#30363d] rounded-xl p-4 min-h-[140px] flex flex-col justify-center items-center text-center";
+    box.innerHTML='<i data-lucide="shopping-bag" class="w-8 h-8 text-[#8b949e] opacity-40 mb-2"></i><p class="text-xs text-[#8b949e]">Your cart is empty.<br>Tap items above to add to sale.</p>';
+    lucide.createIcons(); return;
   }
 
-  checkoutBtn.disabled = false;
-  container.className = "bg-[#21262d] border border-[#30363d] rounded-xl divide-y divide-[#30363d] overflow-hidden";
-  container.innerHTML = cart.map(i => `
-    <div class="p-3 flex items-center justify-between text-xs">
-      <div>
-        <div class="font-bold text-white">${i.name}</div>
-        <div class="text-[#8b949e]">₱${i.price.toFixed(2)} × ${i.qty}</div>
-      </div>
-      <div class="font-bold text-white">₱${(i.price * i.qty).toFixed(2)}</div>
-    </div>
-  `).join('');
+  box.className="bg-[#21262d] border border-[#30363d] rounded-xl overflow-hidden";
+  box.innerHTML=cart.map(x=>`<div class="p-3 flex items-center justify-between border-b border-[#30363d] last:border-b-0">
+    <div class="min-w-0 pr-3"><div class="font-bold text-white text-xs truncate">${escapeHtml(x.name)}</div>
+    <div class="text-[#8b949e] text-[10px]">₱${x.price.toFixed(2)} × ${x.qty} · ${formatQty(availableQty(x.key))} left</div></div>
+    <div class="flex items-center gap-2 shrink-0">
+      <button onclick="changeCartQty('${x.key}',-1)" class="w-7 h-7 rounded-lg bg-[#30363d] text-white font-bold">−</button>
+      <span class="w-5 text-center text-xs font-bold">${x.qty}</span>
+      <button onclick="changeCartQty('${x.key}',1)" class="w-7 h-7 rounded-lg bg-[#30363d] text-white font-bold">+</button>
+    </div></div>`).join('');
+  lucide.createIcons();
 }
 
-// Initialize Lucide Icons
-document.addEventListener('DOMContentLoaded', () => {
-  lucide.createIcons();
-});
+document.addEventListener('DOMContentLoaded',()=>{ lucide.createIcons(); renderCart(); });
 </script>
 </body>
 </html>
