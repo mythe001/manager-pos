@@ -74,7 +74,7 @@
 </div>
       <div>
         <span class="text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">Manager.io POS</span>
-        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.3</h1>
+        <h1 class="text-lg font-bold text-white">Manager.io POS — Development · V1.4.1</h1>
       </div>
       <button id="load-btn" onclick="loadPosData()" class="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95">
         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
@@ -856,12 +856,200 @@ async function createSalesInvoiceFromCart() {
       searchInput.focus();
     }
 
-    alert(`Sales Invoice ${reference} created successfully.`);
+    alert(`Sales Invoice ${reference} created successfully.`); openPaymentForLastInvoice();
   } catch (error) {
     console.error('Sales Invoice creation failed:', error);
     showCheckoutError(error?.message || 'Unable to create the Sales Invoice.');
   } finally {
     setCheckoutBusy(false);
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+// Payment -> Manager Receipt
+// Only ACTIVE bank/cash accounts are offered for payment.
+// -----------------------------------------------------------------------------
+let paymentBusy = false;
+
+function getActivePaymentAccounts() {
+  return (paymentAccounts || []).filter(record => {
+    const item = record.item || record.account || record;
+    return item && !Boolean(item.inactive);
+  });
+}
+
+function paymentAccountName(record) {
+  const item = record.item || record.account || record;
+  return item.name || item.accountName || 'Unnamed account';
+}
+
+function paymentAccountKey(record) {
+  return record.key || record.item?.key || record.account?.key || record.accountKey || '';
+}
+
+function openPaymentForLastInvoice() {
+  const sale = window.posLastCreatedInvoice;
+
+  if (!sale?.key) {
+    alert('No newly created Sales Invoice is available for payment.');
+    return;
+  }
+
+  const activeAccounts = getActivePaymentAccounts();
+  const select = document.getElementById('payment-account-select');
+  if (!select) return;
+
+  if (!activeAccounts.length) {
+    alert('No active bank or cash accounts are available for payment.');
+    return;
+  }
+
+  select.innerHTML = activeAccounts.map(account => {
+    const key = paymentAccountKey(account);
+    return `<option value="${escapeHtml(key)}">${escapeHtml(paymentAccountName(account))}</option>`;
+  }).join('');
+
+  document.getElementById('payment-invoice-info').textContent =
+    `Invoice ${sale.reference} · Total ₱${Number(sale.total || 0).toFixed(2)}`;
+
+  document.getElementById('payment-amount').value =
+    Number(sale.total || 0).toFixed(2);
+
+  document.getElementById('payment-error')?.classList.add('hidden');
+  document.getElementById('payment-modal')?.classList.remove('hidden');
+}
+
+function closePayment() {
+  if (paymentBusy) return;
+  document.getElementById('payment-modal')?.classList.add('hidden');
+}
+
+function setPaymentBusy(busy) {
+  paymentBusy = busy;
+  const button = document.getElementById('record-payment-button');
+  if (!button) return;
+
+  button.disabled = busy;
+  button.textContent = busy ? 'Recording...' : 'Record Payment';
+  button.classList.toggle('opacity-60', busy);
+}
+
+function showPaymentError(message) {
+  const el = document.getElementById('payment-error');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+async function findAccountsReceivableAccount() {
+  try {
+    const [bsData, caData] = await Promise.all([
+      apiCall('GET', '/api4/balance-sheet-account-batch?PageSize=500'),
+      apiCall('GET', '/api4/control-account-batch?PageSize=500')
+    ]);
+
+    const toItems = data =>
+      Array.isArray(data?.items) ? data.items :
+      Array.isArray(data) ? data : [];
+
+    const all = [...toItems(bsData), ...toItems(caData)];
+
+    const ar = all.find(record => {
+      const item = record.item || record.account || record;
+      return item?.isAccountsReceivable === true;
+    });
+
+    return ar?.key || ar?.item?.key || ar?.account?.key || null;
+  } catch (error) {
+    console.error('Accounts Receivable lookup failed:', error);
+    return null;
+  }
+}
+
+async function createReceiptForLastInvoice() {
+  if (paymentBusy) return;
+
+  const sale = window.posLastCreatedInvoice;
+  if (!sale?.key) {
+    showPaymentError('No Sales Invoice is available for payment.');
+    return;
+  }
+
+  const accountSelect = document.getElementById('payment-account-select');
+  const receivedIn = accountSelect?.value || '';
+  const amount = Number(document.getElementById('payment-amount')?.value || 0);
+
+  if (!receivedIn) {
+    showPaymentError('Please select an active bank or cash account.');
+    return;
+  }
+
+  if (!(amount > 0)) {
+    showPaymentError('Please enter a payment amount greater than zero.');
+    return;
+  }
+
+  if (amount > Number(sale.total || 0) + 0.000001) {
+    showPaymentError('Payment cannot exceed the Sales Invoice total.');
+    return;
+  }
+
+  const arAccount = await findAccountsReceivableAccount();
+  if (!arAccount) {
+    showPaymentError('Could not identify the Accounts Receivable account.');
+    return;
+  }
+
+  setPaymentBusy(true);
+  document.getElementById('payment-error')?.classList.add('hidden');
+
+  try {
+    const payload = {
+      value: {
+        date: (sale.issueDate || todayISO()) + 'T00:00:00',
+        reference: sale.reference,
+        paidBy: 1,
+        customer: sale.customerKey,
+        receivedIn,
+        lines: [{
+          account: arAccount,
+          accountsReceivableCustomer: sale.customerKey,
+          accountsReceivableSalesInvoice: sale.key,
+          amount
+        }]
+      }
+    };
+
+    const result = await apiCall('POST', '/api4/receipt', payload);
+
+    const receiptKey =
+      typeof result === 'string'
+        ? result
+        : result?.key || result?.value?.key || result?.value;
+
+    if (!receiptKey) {
+      throw new Error('Manager did not return the created Receipt key.');
+    }
+
+    window.posLastCreatedReceipt = {
+      key: receiptKey,
+      reference: sale.reference,
+      invoiceKey: sale.key,
+      customerKey: sale.customerKey,
+      receivedIn,
+      amount
+    };
+
+    closePayment();
+
+    // Keep the created invoice/receipt context available for the receipt-printing step.
+    alert(`Payment recorded successfully for ${sale.reference}.`);
+  } catch (error) {
+    console.error('Receipt creation failed:', error);
+    showPaymentError(error?.message || 'Unable to record the payment.');
+  } finally {
+    setPaymentBusy(false);
   }
 }
 
@@ -900,6 +1088,39 @@ async function createSalesInvoiceFromCart() {
       <div class="mt-4 flex gap-2">
         <button type="button" onclick="closeCheckout()" class="flex-1 px-3 py-2 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Cancel</button>
         <button type="button" id="create-invoice-button" onclick="createSalesInvoiceFromCart()" class="flex-1 px-3 py-2 rounded-md bg-[#238636] text-white text-xs font-medium hover:bg-[#2ea043]">Create Sales Invoice</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="payment-modal" class="hidden fixed inset-0 z-[120] bg-black/60 p-4">
+  <div class="max-w-md mx-auto mt-10 bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
+      <div>
+        <div class="font-semibold text-white">Payment</div>
+        <div class="text-xs text-[#8b949e]">Record payment for the Sales Invoice.</div>
+      </div>
+      <button type="button" onclick="closePayment()" class="text-[#8b949e] hover:text-white text-xl leading-none">&times;</button>
+    </div>
+
+    <div class="px-4 py-4">
+      <div id="payment-invoice-info" class="text-xs text-[#8b949e]"></div>
+
+      <div class="mt-4">
+        <label class="block text-xs text-[#8b949e] mb-1">Received in</label>
+        <select id="payment-account-select" class="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#58a6ff]"></select>
+      </div>
+
+      <div class="mt-4">
+        <label class="block text-xs text-[#8b949e] mb-1">Amount received</label>
+        <input id="payment-amount" type="number" min="0" step="0.01" class="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#58a6ff]">
+      </div>
+
+      <div id="payment-error" class="hidden mt-3 rounded-md border border-[#f85149]/40 bg-[#f85149]/10 px-3 py-2 text-xs text-[#f85149]"></div>
+
+      <div class="mt-4 flex gap-2">
+        <button type="button" onclick="closePayment()" class="flex-1 px-3 py-2 rounded-md border border-[#30363d] bg-[#21262d] text-xs text-white hover:bg-[#30363d]">Cancel</button>
+        <button type="button" id="record-payment-button" onclick="createReceiptForLastInvoice()" class="flex-1 px-3 py-2 rounded-md bg-[#238636] text-white text-xs font-medium hover:bg-[#2ea043]">Record Payment</button>
       </div>
     </div>
   </div>
