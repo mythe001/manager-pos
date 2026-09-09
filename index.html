@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Manager.io POS — V2.6</title>
+<title>Manager.io POS — V2.7</title>
 <!-- Tailwind CSS via CDN -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- Lucide Icons -->
@@ -56,7 +56,7 @@
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <span class="text-base font-extrabold text-white tracking-tight">Manager.io POS</span>
-          <span class="text-[10px] font-semibold bg-[#21262d] text-[#8b949e] border border-[#30363d] px-2 py-0.5 rounded-full">v2.6</span>
+          <span class="text-[10px] font-semibold bg-[#21262d] text-[#8b949e] border border-[#30363d] px-2 py-0.5 rounded-full">v2.7</span>
         </div>
         <div class="mt-0.5 inline-flex items-center gap-1.5 text-xs text-[#8b949e]">
           <span id="sync-dot" class="w-2 h-2 rounded-full bg-[#d29922] shrink-0"></span>
@@ -1280,59 +1280,20 @@ async function createReceiptForLastInvoice() {
       }
     };
 
-    console.log("=== POS RECEIPT PAYLOAD ===", payload);
-
-    let lastReceiptError = null;
-
-    async function tryPost(endpoint, body) {
-      try {
-        let result;
-        // Force directFetch on Manager Cloud to bypass iframe bridge error-swallowing
-        if (window.managerAppContext?.apiEndpoint && window.managerAppContext?.apiAccessToken) {
-          result = await directFetch('POST', endpoint, body);
-        } else {
-          result = await apiCall('POST', endpoint, body);
-        }
-        console.log(`=== POST ${endpoint} SUCCESS ===`, result);
-        return typeof result === 'string'
-          ? result
-          : (result?.key || result?.Key || result?.value?.key || result?.value?.Key || result?.value || result);
-      } catch (err) {
-        lastReceiptError = err;
-        console.warn(`=== POST ${endpoint} FAILED ===`, err);
-        return null;
-      }
+    let result;
+    // Always prefer directFetch when in Manager Cloud context to bypass iframe error swallowing
+    if (window.managerAppContext?.apiEndpoint && window.managerAppContext?.apiAccessToken) {
+      result = await directFetch('POST', '/api4/receipt', payload);
+    } else {
+      result = await apiCall('POST', '/api4/receipt', payload);
     }
 
-    // Try primary singular endpoint
-    let key = await tryPost('/api4/receipt', payload);
-
-    // Try plural endpoint fallback if singular rejected
-    if (!key) {
-      key = await tryPost('/api4/receipts', payload);
-    }
-
-    // Fallback attempt: line without explicit lineDescription
-    if (!key) {
-      const minimalPayload = {
-        value: {
-          date: (sale.issueDate || todayISO()) + 'T00:00:00',
-          reference: sale.reference,
-          receivedIn: receivedIn,
-          lines: [{
-            account: arAccount,
-            accountsReceivableCustomer: customerKey,
-            accountsReceivableSalesInvoice: targetInvoiceGuid,
-            amount: amount
-          }]
-        }
-      };
-      key = await tryPost('/api4/receipt', minimalPayload);
-    }
+    const key = typeof result === 'string'
+      ? result
+      : (result?.key || result?.Key || result?.value?.key || result?.value?.Key || result?.value || result);
 
     if (!key) {
-      const detail = lastReceiptError?.message ? ` (${lastReceiptError.message})` : '';
-      throw new Error(`Manager rejected the Receipt.${detail}`);
+      throw new Error('Manager rejected the Receipt.');
     }
 
     window.posLastCreatedReceipt = {
