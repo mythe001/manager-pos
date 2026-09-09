@@ -82,19 +82,21 @@
 
     <div class="flex items-stretch gap-1.5 shrink-0">
       <button type="button" onclick="parkCurrentOrder()" title="Park current sale"
-        class="w-[52px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex flex-col items-center justify-center leading-none text-[10px] font-bold">
-        <i data-lucide="pause-circle" class="w-3.5 h-3.5 mb-0.5"></i><span>Park</span><span>Sale</span>
+        class="w-[78px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1.5 text-[10px] font-bold">
+        <i data-lucide="pause-circle" class="w-3.5 h-3.5 shrink-0"></i>
+        <span>Park Sale</span>
       </button>
 
       <button type="button" onclick="openParkedOrders()" title="Parked orders"
-        class="w-[64px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1 text-[10px] font-bold">
+        class="w-[78px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1.5 text-[10px] font-bold">
         <i data-lucide="layers" class="w-3.5 h-3.5 shrink-0"></i>
         <span>Parked <span id="parked-orders-count">(0)</span></span>
       </button>
 
       <button type="button" onclick="openUnpaidInvoices()" title="Receive payment"
-        class="w-[68px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex flex-col items-center justify-center leading-none text-[10px] font-bold">
-        <i data-lucide="wallet-cards" class="w-3.5 h-3.5 mb-0.5"></i><span>Receive</span><span>Payment</span>
+        class="w-[104px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1.5 text-[10px] font-bold">
+        <i data-lucide="wallet-cards" class="w-3.5 h-3.5 shrink-0"></i>
+        <span>Receive Payment</span>
       </button>
 
       <button id="load-btn" onclick="loadPosData()" title="Sync Manager data"
@@ -180,7 +182,7 @@
     <span>Pay & Create Invoice</span>
   </button>
   <div class="mt-1.5 text-center text-[9px] text-[#8b949e]">Tax and discounts are not currently applied by the POS.</div>
-  <div class="mt-1 text-center text-[8px] text-[#484f58]">POS V1.9</div>
+  <div class="mt-1 text-center text-[8px] text-[#484f58]">POS V2.2</div>
 </footer>
 
 </div>
@@ -1467,7 +1469,9 @@ function receivePaymentForInvoice(invoiceKey) {
   window.posPaymentInvoice = {
     key: invoice.key,
     reference: invoice.reference,
-    invoicePaymentTarget: invoice.reference || invoice.key,
+    // Use the actual Manager Sales Invoice key first, exactly like the
+    // payment path that succeeds immediately after invoice creation.
+    invoicePaymentTarget: invoice.key,
     issueDate: invoice.issueDate,
     customerKey: invoice.customerKey,
     customerName: invoice.customerName,
