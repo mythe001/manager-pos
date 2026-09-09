@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Manager.io POS — V2.3</title>
+<title>Manager.io POS — V2.5</title>
 <!-- Tailwind CSS via CDN -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- Lucide Icons -->
@@ -56,7 +56,7 @@
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <span class="text-base font-extrabold text-white tracking-tight">Manager.io POS</span>
-          <span class="text-[10px] font-semibold bg-[#21262d] text-[#8b949e] border border-[#30363d] px-2 py-0.5 rounded-full">v2.3</span>
+          <span class="text-[10px] font-semibold bg-[#21262d] text-[#8b949e] border border-[#30363d] px-2 py-0.5 rounded-full">v2.5</span>
         </div>
         <div class="mt-0.5 inline-flex items-center gap-1.5 text-xs text-[#8b949e]">
           <span id="sync-dot" class="w-2 h-2 rounded-full bg-[#d29922] shrink-0"></span>
@@ -102,7 +102,6 @@
   </header>
 
   <!-- Responsive Main Workspace Layout -->
-  <!-- Laptop/Desktop: 2-column layout (Catalog/Search Left | Cart & Checkout Right) -->
   <main class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-0 overflow-hidden min-h-0">
 
     <!-- LEFT COLUMN: Customer Selection + Search + Quick Add Grid -->
@@ -144,7 +143,6 @@
           <span id="item-count" class="text-xs text-[#8b949e] font-medium">0 items</span>
         </div>
         
-        <!-- Grid adapts dynamically from 2 to 4 columns depending on screen size -->
         <div id="bestsellers-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 overflow-y-auto p-0.5 max-h-[480px] md:max-h-none">
           <div class="col-span-full text-center py-10 text-xs text-[#8b949e] bg-[#21262d] rounded-2xl border border-dashed border-[#30363d]">
             <i data-lucide="refresh-cw" class="w-6 h-6 mx-auto mb-2 text-[#8b949e] opacity-40"></i>
@@ -1263,20 +1261,22 @@ async function createReceiptForLastInvoice() {
       throw new Error('Could not resolve Accounts Receivable control account.');
     }
 
-    // Ensure accountsReceivableSalesInvoice receives the exact GUID key
+    // Target Invoice GUID
     const targetInvoiceGuid = sale.key;
 
+    // Strict v1.6 Receipt Payload:
+    // Omit `paidBy` and top-level `customer`. Credit strictly via Accounts Receivable line.
     const payload = {
       value: {
         date: (sale.issueDate || todayISO()) + 'T00:00:00',
         reference: sale.reference,
-        paidBy: 1,
-        customer: customerKey,
         receivedIn,
+        description: `Payment for Invoice ${sale.reference}`,
         lines: [{
           account: arAccount,
           accountsReceivableCustomer: customerKey,
           accountsReceivableSalesInvoice: targetInvoiceGuid,
+          lineDescription: `Payment for Invoice ${sale.reference}`,
           amount
         }]
       }
@@ -1291,7 +1291,9 @@ async function createReceiptForLastInvoice() {
         } else {
           result = await apiCall('POST', '/api4/receipt', p);
         }
-        return typeof result === 'string' ? result : (result?.key || result?.Key || result?.value?.key || result?.value?.Key || result?.value || result);
+        return typeof result === 'string'
+          ? result
+          : (result?.key || result?.Key || result?.value?.key || result?.value?.Key || result?.value || result);
       } catch (err) {
         lastReceiptError = err;
         console.error('Receipt POST rejected:', err);
@@ -1301,19 +1303,21 @@ async function createReceiptForLastInvoice() {
 
     let key = await postReceipt(payload);
 
+    // Fallback: Retries with default AR account if the resolved custom control account failed
     if (!key && arAccount !== TEST_BUSINESS_AR_FALLBACK) {
-      const retryPayload = {
+      const fallbackArPayload = {
         value: {
           ...payload.value,
           lines: [{
             account: TEST_BUSINESS_AR_FALLBACK,
             accountsReceivableCustomer: customerKey,
             accountsReceivableSalesInvoice: targetInvoiceGuid,
+            lineDescription: `Payment for Invoice ${sale.reference}`,
             amount
           }]
         }
       };
-      key = await postReceipt(retryPayload);
+      key = await postReceipt(fallbackArPayload);
     }
 
     if (!key) {
@@ -1335,7 +1339,7 @@ async function createReceiptForLastInvoice() {
     document.getElementById('unpaid-invoices-modal')?.classList.add('hidden');
     document.getElementById('checkout-modal')?.classList.add('hidden');
 
-    showToast(`Payment recorded: ${sale.reference}`,'success');
+    showToast(`Payment recorded: ${sale.reference}`, 'success');
   } catch (err) {
     console.error('Receipt creation failed:', err);
     showPaymentError(err?.message || 'Could not record payment.');
@@ -1353,7 +1357,6 @@ let unpaidInvoicesBusy = false;
 function recordItem(record) { return record?.item || record || {}; }
 
 function getRecordKey(record) {
-  // Safe multi-casing GUID extractor
   return record?.key || record?.Key || record?.item?.key || record?.item?.Key || record?.id || '';
 }
 
@@ -1556,7 +1559,6 @@ function receivePaymentForInvoice(invoiceKey) {
     </option>
   `).join('');
 
-  // Pass exact GUID key as invoicePaymentTarget
   window.posPaymentInvoice = {
     key: invoice.key,
     reference: invoice.reference,
