@@ -1292,13 +1292,46 @@ async function createReceiptForLastInvoice() {
     console.log('Receipt payload:', payload);
 
     // ONE POST ONLY. No retries and no guessed alternate endpoints.
-    const result = await apiCall('POST', '/api4/receipt', payload);
+    // Use directFetch here so we can see the actual HTTP status and raw body
+    // from Manager instead of relying on the iframe bridge to expose errors.
+    let response;
+    if (window.managerAppContext?.apiEndpoint && window.managerAppContext?.apiAccessToken) {
+      const base = window.managerAppContext.apiEndpoint.replace(/\/+$/, '');
+      const url = base + '/api4/receipt';
+      const httpResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + window.managerAppContext.apiAccessToken,
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      const rawText = await httpResponse.text();
+      console.log('Receipt HTTP status:', httpResponse.status, httpResponse.statusText);
+      console.log('Receipt HTTP headers:', Object.fromEntries(httpResponse.headers.entries()));
+      console.log('Receipt HTTP raw body:', rawText);
 
-    console.log('Receipt API raw response:', result);
+      if (!httpResponse.ok) {
+        let detail = rawText;
+        try {
+          const parsed = rawText ? JSON.parse(rawText) : null;
+          detail = parsed?.error || parsed?.message || parsed?.detail || parsed?.reason || rawText;
+        } catch {}
+        const suffix = detail ? `\nManager response: ${String(detail).substring(0, 1500)}` : '\nManager returned an empty response body.';
+        throw new Error(`Receipt POST failed with HTTP ${httpResponse.status} ${httpResponse.statusText}.${suffix}`);
+      }
+
+      try { response = JSON.parse(rawText); } catch { response = rawText; }
+    } else {
+      response = await apiCall('POST', '/api4/receipt', payload);
+      console.log('Receipt API bridge response:', response);
+    }
+
+    console.log('Receipt parsed response:', response);
 
     // The Manager API bridge may return an error object rather than reject
     // the Promise when Manager responds with HTTP 400. Treat that as failure.
-    let response = result;
     if (typeof response === 'string') {
       const trimmed = response.trim();
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
