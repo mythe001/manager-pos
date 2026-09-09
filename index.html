@@ -82,21 +82,19 @@
 
     <div class="flex items-stretch gap-1.5 shrink-0">
       <button type="button" onclick="parkCurrentOrder()" title="Park current sale"
-        class="w-[78px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1.5 text-[10px] font-bold">
-        <i data-lucide="pause-circle" class="w-3.5 h-3.5 shrink-0"></i>
-        <span>Park Sale</span>
+        class="w-[88px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1.5 text-[10px] font-bold">
+        <i data-lucide="pause-circle" class="w-3.5 h-3.5 shrink-0"></i><span>Park Sale</span>
       </button>
 
       <button type="button" onclick="openParkedOrders()" title="Parked orders"
-        class="w-[78px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1.5 text-[10px] font-bold">
+        class="w-[64px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1 text-[10px] font-bold">
         <i data-lucide="layers" class="w-3.5 h-3.5 shrink-0"></i>
         <span>Parked <span id="parked-orders-count">(0)</span></span>
       </button>
 
       <button type="button" onclick="openUnpaidInvoices()" title="Receive payment"
-        class="w-[104px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1.5 text-[10px] font-bold">
-        <i data-lucide="wallet-cards" class="w-3.5 h-3.5 shrink-0"></i>
-        <span>Receive Payment</span>
+        class="w-[112px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1.5 text-[10px] font-bold">
+        <i data-lucide="wallet-cards" class="w-3.5 h-3.5 shrink-0"></i><span>Receive Payment</span>
       </button>
 
       <button id="load-btn" onclick="loadPosData()" title="Sync Manager data"
@@ -858,9 +856,13 @@ async function createSalesInvoiceFromCart() {
   // Final stock validation immediately before posting.
   for (const line of cart) {
     if (!isStocked(line)) continue;
-    const available = availableQty(line.key);
-    if (available < Number(line.qty || 0)) {
-      showCheckoutError(`Insufficient stock for ${line.name}. Available: ${formatQty(available)}.`);
+    // Validate against the actual Manager on-hand quantity. `availableQty()`
+    // subtracts the quantity already in the cart for display purposes, so it
+    // must NOT be used as the checkout limit. Example: 1 on hand + 1 in cart
+    // correctly displays 0 left, but the sale of that 1 unit must still pass.
+    const onHand = getQtyOwned(line.key);
+    if (onHand + 0.000001 < Number(line.qty || 0)) {
+      showCheckoutError(`Insufficient stock for ${line.name}. Available: ${formatQty(onHand)}.`);
       return;
     }
   }
@@ -906,6 +908,11 @@ async function createSalesInvoiceFromCart() {
     }
 
     // Keep the created transaction for the payment/receipt step we will add next.
+    // A newly created invoice must always become the active payment target.
+    // Clear any previously selected unpaid invoice so a stale selection cannot
+    // override this new invoice in createReceiptForLastInvoice().
+    window.posPaymentInvoice = null;
+
     window.posLastCreatedInvoice = {
       key: invoiceKey,
       reference,
@@ -1124,7 +1131,12 @@ async function createReceiptForLastInvoice() {
   document.getElementById('payment-error')?.classList.add('hidden');
 
   try {
-    const arAccount = await resolveARAccountForCustomer(sale.customerKey);
+    const customerKey = relationKey(sale.customerKey);
+    if (!customerKey) {
+      throw new Error('The selected Sales Invoice does not contain a valid Manager customer key.');
+    }
+
+    const arAccount = await resolveARAccountForCustomer(customerKey);
 
     if (!arAccount) {
       throw new Error('Could not find the Accounts Receivable account. Payment was not posted.');
@@ -1136,11 +1148,11 @@ async function createReceiptForLastInvoice() {
         date: (sale.issueDate || todayISO()) + 'T00:00:00',
         reference: sale.reference,
         paidBy: 1,
-        customer: sale.customerKey,
+        customer: customerKey,
         receivedIn,
         lines: [{
           account: arAccount,
-          accountsReceivableCustomer: sale.customerKey,
+          accountsReceivableCustomer: customerKey,
           accountsReceivableSalesInvoice: sale.invoicePaymentTarget || sale.key,
           amount
         }]
@@ -1188,11 +1200,11 @@ async function createReceiptForLastInvoice() {
             date: (sale.issueDate || todayISO()) + 'T00:00:00',
             reference: sale.reference,
             paidBy: 1,
-            customer: sale.customerKey,
+            customer: customerKey,
             receivedIn,
             lines: [{
               account: attempt.account,
-              accountsReceivableCustomer: sale.customerKey,
+              accountsReceivableCustomer: customerKey,
               accountsReceivableSalesInvoice: attempt.target,
               amount
             }]
@@ -1212,7 +1224,7 @@ async function createReceiptForLastInvoice() {
       key,
       reference: sale.reference,
       invoiceKey: sale.key,
-      customerKey: sale.customerKey,
+      customerKey,
       receivedIn,
       amount
     };
@@ -1260,9 +1272,16 @@ function getInvoiceReference(invoice) {
   return item.reference || item.invoiceNumber || getRecordKey(invoice);
 }
 
+function relationKey(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') return value.key || value.id || value.value || value.Key || '';
+  return '';
+}
+
 function getInvoiceCustomerKey(invoice) {
   const item = recordItem(invoice);
-  return item.customer || item.customerKey || '';
+  return relationKey(item.customer) || relationKey(item.customerKey);
 }
 
 function getInvoiceLines(invoice) {
@@ -1346,13 +1365,16 @@ async function loadUnpaidInvoices() {
   unpaidInvoices = invoices
     .map(invoice => {
       const key = getRecordKey(invoice);
+      const reference = getInvoiceReference(invoice);
       const total = getInvoiceTotal(invoice);
-      const paid = paidMap[key] || 0;
+      // Existing receipts may link the invoice by GUID/key or by invoice
+      // reference depending on how they were created. Check both aliases.
+      const paid = Math.max(paidMap[key] || 0, paidMap[reference] || 0);
       const outstanding = Math.max(0, total - paid);
 
       return {
         key,
-        reference: getInvoiceReference(invoice),
+        reference,
         customerKey: getInvoiceCustomerKey(invoice),
         customerName: customerNameForKey(getInvoiceCustomerKey(invoice)),
         issueDate: getInvoiceDate(invoice),
@@ -1470,8 +1492,8 @@ function receivePaymentForInvoice(invoiceKey) {
     key: invoice.key,
     reference: invoice.reference,
     // Use the actual Manager Sales Invoice key first, exactly like the
-    // payment path that succeeds immediately after invoice creation.
-    invoicePaymentTarget: invoice.key,
+    // receipt path for a newly created invoice. Reference is only a fallback.
+    invoicePaymentTarget: invoice.key || invoice.reference,
     issueDate: invoice.issueDate,
     customerKey: invoice.customerKey,
     customerName: invoice.customerName,
