@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Manager.io POS — V1.9</title>
+<title>Manager.io POS — V2.1</title>
 <!-- Tailwind CSS via CDN for rapid mobile styling -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- Lucide Icons -->
@@ -111,7 +111,7 @@
 </header>
 
   <!-- Main POS Screen Area -->
-  <main class="p-4 flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-3">
+  <main class="p-4 flex-1 min-h-0 overflow-hidden overscroll-contain flex flex-col gap-3">
 
     <!-- Step 1: Customer Selector -->
     <div class="bg-[#21262d] border border-[#30363d] p-3 rounded-xl flex items-center gap-3">
@@ -144,7 +144,7 @@
         <span class="text-xs font-bold text-[#8b949e] uppercase tracking-wider">Quick Add</span>
         <span id="item-count" class="text-[10px] text-[#8b949e]">0 items</span>
       </div>
-      <div id="bestsellers-grid" class="grid grid-cols-3 gap-2 max-h-[192px] overflow-y-auto overscroll-contain pr-0.5">
+      <div id="bestsellers-grid" class="grid grid-cols-3 gap-2 max-h-[132px] overflow-y-auto overscroll-contain pr-0.5">
         <div class="col-span-3 text-center py-4 text-xs text-[#8b949e] bg-[#21262d] rounded-xl border border-dashed border-[#30363d]">
           Sync data to view inventory
         </div>
@@ -204,6 +204,35 @@ function postMessageWithResponse(message) {
     window.addEventListener('message', handler);
     window.parent.postMessage({ ...message, requestId }, '*');
   });
+}
+
+async function directFetch(method, path, body) {
+  const ctx = window.managerAppContext;
+  if (!ctx || !ctx.apiEndpoint || !ctx.apiAccessToken) {
+    throw new Error('managerAppContext not available');
+  }
+  const base = ctx.apiEndpoint.replace(/\/+$/, '');
+  const url = base + (path.startsWith('/') ? path : '/' + path);
+  const opts = {
+    method,
+    headers: {
+      Authorization: 'Bearer ' + ctx.apiAccessToken,
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    }
+  };
+  if (body !== undefined && body !== null) opts.body = JSON.stringify(body);
+  const resp = await fetch(url, opts);
+  const text = await resp.text();
+  if (!resp.ok) {
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      detail = parsed?.error || parsed?.message || parsed?.detail || text;
+    } catch {}
+    throw new Error(`HTTP ${resp.status}: ${String(detail).substring(0, 500)}`);
+  }
+  try { return JSON.parse(text); } catch { return text; }
 }
 
 async function apiCall(method, path, body) {
@@ -307,7 +336,7 @@ function itemData(r) {
   return r?.item || r?.nonInventoryItem || r?.inventoryKit || r || {};
 }
 function itemType(r) {
-  return r?.posType || (r?.nonInventoryItem ? 'non-inventory' : r?.inventoryKit ? 'inventory-kit' : 'inventory');
+  return r?.posType || r?.type || (r?.nonInventoryItem ? 'non-inventory' : r?.inventoryKit ? 'inventory-kit' : 'inventory');
 }
 function itemName(r) { const x=itemData(r); return x.itemName || x.ItemName || x.nameWithCode || x.NameWithCode || x.name || x.Name || x.description || x.Description || 'Unnamed Item'; }
 function itemCode(r) { const x=itemData(r); return x.itemCode || x.ItemCode || x.code || x.Code || ''; }
@@ -559,13 +588,13 @@ function renderCart() {
   document.getElementById('checkout-btn').disabled = !cart.length;
 
   if (!cart.length) {
-    box.className = "bg-[#21262d] border border-[#30363d] rounded-xl p-4 min-h-[110px] flex flex-col justify-center items-center text-center";
+    box.className = "flex-1 min-h-[110px] overflow-y-auto bg-[#21262d] border border-[#30363d] rounded-xl p-4 flex flex-col justify-center items-center text-center overscroll-contain";
     box.innerHTML = '<i data-lucide="shopping-bag" class="w-8 h-8 text-[#8b949e] opacity-40 mb-2"></i><p class="text-xs text-[#8b949e]">Your cart is empty.<br>Search or tap a Quick Add item.</p>';
     lucide.createIcons();
     return;
   }
 
-  box.className = "bg-[#21262d] border border-[#30363d] rounded-xl overflow-hidden";
+  box.className = "flex-1 min-h-0 overflow-y-auto overscroll-contain bg-[#21262d] border border-[#30363d] rounded-xl";
   box.innerHTML = cart.map(x => {
     const lineTotal = x.price * x.qty;
     const available = isStocked(x) ? availableQty(x.key) : Infinity;
@@ -878,10 +907,12 @@ async function createSalesInvoiceFromCart() {
     window.posLastCreatedInvoice = {
       key: invoiceKey,
       reference,
+      invoicePaymentTarget: invoiceKey,
       issueDate,
       customerKey,
       total: calculateCartTotal(),
-      cart: cart.map(line => ({ ...line }))
+      cart: cart.map(line => ({ ...line })),
+      fromUnpaidInvoices: false
     };
 
     cart = [];
@@ -1029,6 +1060,7 @@ async function getReceiptsForAR() {
 async function resolveARAccountForCustomer(customerKey) {
   const customerRec = customerList.find(c => c.key === customerKey);
   let arAccount = customerRec?.item?.controlAccount || null;
+  if (arAccount && typeof arAccount === 'object') arAccount = arAccount.key || arAccount.id || null;
 
   if (!arAccount) {
     const receipts = await getReceiptsForAR();
@@ -1107,41 +1139,71 @@ async function createReceiptForLastInvoice() {
         lines: [{
           account: arAccount,
           accountsReceivableCustomer: sale.customerKey,
-          accountsReceivableSalesInvoice: sale.key,
+          accountsReceivableSalesInvoice: sale.invoicePaymentTarget || sale.key,
           amount
         }]
       }
     };
 
-    let key = await apiCall('POST', '/api4/receipt', payload);
+    // Prefer the Manager app context's direct API when available. This gives us
+    // the actual HTTP 400 response body instead of the relay reducing it to a
+    // null/undefined result. The payload itself remains the same proven
+    // Manager receipt payload used by the working Toolkit POS.
+    let lastReceiptError = null;
+    async function postReceipt(payload) {
+      try {
+        let result;
+        if (window.managerAppContext?.apiEndpoint && window.managerAppContext?.apiAccessToken) {
+          result = await directFetch('POST', '/api4/receipt', payload);
+        } else {
+          result = await apiCall('POST', '/api4/receipt', payload);
+        }
+        return typeof result === 'string' ? result : (result?.key || result?.value?.key || result?.value || result);
+      } catch (err) {
+        lastReceiptError = err;
+        console.error('Receipt POST rejected:', err);
+        return null;
+      }
+    }
+
+    let key = await postReceipt(payload);
 
     // Some Manager businesses can expose a customer/control-account mapping
     // that is valid for lookup but is not accepted as the AR line account.
-    // If the first attempt is rejected/returns no key, retry once using the
-    // confirmed AR fallback used by the working Toolkit POS. This retry is
-    // only made after the first POST failed, so it cannot duplicate a
-    // successfully created receipt.
-    if (!key && arAccount !== TEST_BUSINESS_AR_FALLBACK) {
-      const retryPayload = {
-        value: {
-          date: (sale.issueDate || todayISO()) + 'T00:00:00',
-          reference: sale.reference,
-          paidBy: 1,
-          customer: sale.customerKey,
-          receivedIn,
-          lines: [{
-            account: TEST_BUSINESS_AR_FALLBACK,
-            accountsReceivableCustomer: sale.customerKey,
-            accountsReceivableSalesInvoice: sale.key,
-            amount
-          }]
-        }
-      };
-      key = await apiCall('POST', '/api4/receipt', retryPayload);
+    // If the first attempt is rejected, retry with the alternate invoice
+    // identifier and/or the confirmed AR fallback. Each retry happens only
+    // after the previous POST failed, so a successful receipt is never posted twice.
+    if (!key) {
+      const targets = [];
+      const primaryTarget = sale.invoicePaymentTarget || sale.key;
+      const alternateTarget = sale.invoicePaymentTarget === sale.reference ? sale.key : sale.reference;
+      if (alternateTarget && alternateTarget !== primaryTarget) targets.push({ target: alternateTarget, account: arAccount });
+      if (arAccount !== TEST_BUSINESS_AR_FALLBACK) targets.push({ target: primaryTarget, account: TEST_BUSINESS_AR_FALLBACK });
+
+      for (const attempt of targets) {
+        const retryPayload = {
+          value: {
+            date: (sale.issueDate || todayISO()) + 'T00:00:00',
+            reference: sale.reference,
+            paidBy: 1,
+            customer: sale.customerKey,
+            receivedIn,
+            lines: [{
+              account: attempt.account,
+              accountsReceivableCustomer: sale.customerKey,
+              accountsReceivableSalesInvoice: attempt.target,
+              amount
+            }]
+          }
+        };
+        key = await postReceipt(retryPayload);
+        if (key) break;
+      }
     }
 
     if (!key) {
-      throw new Error('Manager rejected the Receipt. Payment was not confirmed. Please verify the Accounts Receivable account and invoice.');
+      const detail = lastReceiptError?.message ? ` ${lastReceiptError.message}` : '';
+      throw new Error(`Manager rejected the Receipt. Payment was not confirmed.${detail}`);
     }
 
     window.posLastCreatedReceipt = {
@@ -1405,12 +1467,14 @@ function receivePaymentForInvoice(invoiceKey) {
   window.posPaymentInvoice = {
     key: invoice.key,
     reference: invoice.reference,
+    invoicePaymentTarget: invoice.reference || invoice.key,
     issueDate: invoice.issueDate,
     customerKey: invoice.customerKey,
     customerName: invoice.customerName,
     total: invoice.total,
     paid: invoice.paid,
-    outstanding: invoice.outstanding
+    outstanding: invoice.outstanding,
+    fromUnpaidInvoices: true
   };
 
   document.getElementById('payment-invoice-info').textContent =
@@ -1472,10 +1536,26 @@ async function createNewCustomer() {
 
     if (!key) throw new Error('Manager did not return the new customer key.');
 
-    customerList.push({
+    // Re-read the newly created customer from Manager before using it in a
+    // receipt. The lightweight local object (name/code only) is enough for
+    // Sales Invoice creation, but it can omit the customer's Control account.
+    // A customer may use a custom control account, so the receipt must use the
+    // actual account assigned by Manager.
+    let fullCustomer = null;
+    try {
+      const refreshedCustomers = await fetchBatch('/api4/customer-batch');
+      fullCustomer = refreshedCustomers.find(c => c.key === key) || null;
+    } catch (refreshError) {
+      console.warn('Could not refresh newly created customer details:', refreshError);
+    }
+
+    const existingIndex = customerList.findIndex(c => c.key === key);
+    const customerRecord = fullCustomer || {
       key,
       item: { name, ...(code ? { code } : {}) }
-    });
+    };
+    if (existingIndex >= 0) customerList[existingIndex] = customerRecord;
+    else customerList.push(customerRecord);
 
     renderCustomerDropdown(customerList);
 
