@@ -1261,77 +1261,68 @@ async function createReceiptForLastInvoice() {
       throw new Error('Could not resolve Accounts Receivable control account.');
     }
 
-    const targetInvoiceGuid = sale.key;
-
-    // Clean AR Receipt Payload for Manager v4
+    // This is the known-good Receipt structure from the working POS reference.
+    // For this diagnostic revision we intentionally make ONE request only.
     const payload = {
       value: {
         date: (sale.issueDate || todayISO()) + 'T00:00:00',
         reference: sale.reference,
+        paidBy: 1,
+        customer: customerKey,
         receivedIn: receivedIn,
-        description: `Payment for Invoice ${sale.reference}`,
         lines: [{
           account: arAccount,
           accountsReceivableCustomer: customerKey,
-          accountsReceivableSalesInvoice: targetInvoiceGuid,
-          lineDescription: `Payment for Invoice ${sale.reference}`,
+          accountsReceivableSalesInvoice: sale.key,
           amount: amount
         }]
       }
     };
 
-    let lastReceiptError = null;
+    console.log('=== POS RECEIPT DIAGNOSTIC REQUEST ===');
+    console.log('Invoice:', {
+      key: sale.key,
+      reference: sale.reference,
+      customerKey,
+      issueDate: sale.issueDate,
+      total: sale.total,
+      paid: sale.paid,
+      outstanding: sale.outstanding
+    });
+    console.log('Receipt payload:', payload);
 
-    async function tryPost(endpoint, body) {
-      try {
-        let result;
-        // Prefer directFetch in Manager Cloud context; use the normal API bridge otherwise.
-        if (window.managerAppContext?.apiEndpoint && window.managerAppContext?.apiAccessToken) {
-          result = await directFetch('POST', endpoint, body);
-        } else {
-          result = await apiCall('POST', endpoint, body);
-        }
+    // ONE POST ONLY. No retries and no guessed alternate endpoints.
+    const result = await apiCall('POST', '/api4/receipt', payload);
 
-        console.log(`=== POST ${endpoint} SUCCESS ===`, result);
-        return typeof result === 'string'
-          ? result
-          : (result?.key || result?.Key || result?.value?.key || result?.value?.Key || result?.value || result);
-      } catch (err) {
-        lastReceiptError = err;
-        console.warn(`=== POST ${endpoint} FAILED ===`, err);
-        return null;
+    console.log('Receipt API raw response:', result);
+
+    // The Manager API bridge may return an error object rather than reject
+    // the Promise when Manager responds with HTTP 400. Treat that as failure.
+    let response = result;
+    if (typeof response === 'string') {
+      const trimmed = response.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try { response = JSON.parse(trimmed); } catch {}
       }
     }
 
-    // Primary Receipt endpoint.
-    let key = await tryPost('/api4/receipt', payload);
+    const errorMessage = response?.error || response?.message || response?.detail || response?.reason;
+    const hasErrorStatus = response?.status === 'error' || response?.success === false || response?.ok === false;
 
-    // Preserve the fallback behavior from the known-working V2.6.
-    if (!key) {
-      key = await tryPost('/api4/receipts', payload);
+    if (errorMessage || hasErrorStatus) {
+      const details = typeof errorMessage === 'string'
+        ? errorMessage
+        : JSON.stringify(response);
+      throw new Error(`Manager rejected the Receipt: ${details}`);
     }
 
-    // Some Manager environments accept the Receipt only without optional descriptions.
-    if (!key) {
-      const minimalPayload = {
-        value: {
-          date: (sale.issueDate || todayISO()) + 'T00:00:00',
-          reference: sale.reference,
-          receivedIn: receivedIn,
-          lines: [{
-            account: arAccount,
-            accountsReceivableCustomer: customerKey,
-            accountsReceivableSalesInvoice: targetInvoiceGuid,
-            amount: amount
-          }]
-        }
-      };
-      key = await tryPost('/api4/receipt', minimalPayload);
-    }
+    const key = typeof response === 'string'
+      ? response
+      : (response?.key || response?.Key || response?.value?.key || response?.value?.Key || response?.value);
 
-    if (!key) {
-      const detail = lastReceiptError?.message ? ` (${lastReceiptError.message})` : '';
-      throw new Error(`Manager rejected the Receipt.${detail}`);
+    if (!key || typeof key !== 'string') {
+      console.error('Unexpected Receipt response:', response);
+      throw new Error(`Manager returned an unexpected Receipt response: ${JSON.stringify(response).substring(0, 1000)}`);
     }
 
     window.posLastCreatedReceipt = {
@@ -1351,7 +1342,21 @@ async function createReceiptForLastInvoice() {
     showToast(`Payment recorded: ${sale.reference}`, 'success');
   } catch (err) {
     console.error('Receipt creation failed:', err);
-    showPaymentError(err?.message || 'Could not record payment.');
+
+    const message = err?.message || 'Could not record payment.';
+    showPaymentError(message);
+
+    // Keep the error visible long enough to read and also make the full
+    // diagnostic object available in DevTools without hiding the modal.
+    console.error('=== POS RECEIPT FAILURE ===', {
+      message,
+      invoiceKey: sale?.key,
+      invoiceReference: sale?.reference,
+      customerKey: relationKey(sale?.customerKey),
+      paymentAccount: receivedIn,
+      amount,
+      sale
+    });
   } finally {
     setPaymentBusy(false);
   }
