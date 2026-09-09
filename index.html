@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Manager.io POS — V1.7</title>
+<title>Manager.io POS — V1.9</title>
 <!-- Tailwind CSS via CDN for rapid mobile styling -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- Lucide Icons -->
@@ -70,37 +70,35 @@
 
   <!-- Header & Sync Control Bar -->
   
-<header class="px-3 py-3 border-b border-[#30363d] bg-[#161b22]">
-  <div class="flex items-center justify-between gap-2">
-    <div class="min-w-0">
-      <div class="flex items-center gap-2">
-        <span class="text-sm font-bold text-white">Manager.io POS</span>
-        <span class="inline-flex items-center gap-1 text-[10px] text-[#8b949e]">
-          <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-[#d29922]"></span>
-          <span id="sync-label">Not synced</span>
-        </span>
+<header class="px-3 py-2.5 border-b border-[#30363d] bg-[#161b22] shrink-0">
+  <div class="flex items-center gap-1.5">
+    <div class="min-w-0 flex-1">
+      <div class="text-sm font-extrabold leading-tight text-white whitespace-nowrap">Manager.io POS</div>
+      <div class="mt-0.5 inline-flex items-center gap-1 text-[9px] text-[#8b949e] max-w-full">
+        <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-[#d29922] shrink-0"></span>
+        <span id="sync-label" class="truncate">Not synced</span>
       </div>
     </div>
 
-    <div class="flex items-center gap-1.5 shrink-0">
+    <div class="flex items-stretch gap-1.5 shrink-0">
       <button type="button" onclick="parkCurrentOrder()" title="Park current sale"
-        class="h-9 px-2.5 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center gap-1.5 text-xs font-semibold">
-        <i data-lucide="pause-circle" class="w-4 h-4"></i><span>Park Sale</span>
+        class="w-[52px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex flex-col items-center justify-center leading-none text-[10px] font-bold">
+        <i data-lucide="pause-circle" class="w-3.5 h-3.5 mb-0.5"></i><span>Park</span><span>Sale</span>
       </button>
 
       <button type="button" onclick="openParkedOrders()" title="Parked orders"
-        class="h-9 px-2.5 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center gap-1.5 text-xs font-semibold">
-        <i data-lucide="layers" class="w-4 h-4"></i>
+        class="w-[64px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center justify-center gap-1 text-[10px] font-bold">
+        <i data-lucide="layers" class="w-3.5 h-3.5 shrink-0"></i>
         <span>Parked <span id="parked-orders-count">(0)</span></span>
       </button>
 
       <button type="button" onclick="openUnpaidInvoices()" title="Receive payment"
-        class="h-9 px-2.5 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex items-center gap-1.5 text-xs font-semibold">
-        <i data-lucide="wallet-cards" class="w-4 h-4"></i><span>Receive Payment</span>
+        class="w-[68px] h-10 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] flex flex-col items-center justify-center leading-none text-[10px] font-bold">
+        <i data-lucide="wallet-cards" class="w-3.5 h-3.5 mb-0.5"></i><span>Receive</span><span>Payment</span>
       </button>
 
       <button id="load-btn" onclick="loadPosData()" title="Sync Manager data"
-        class="h-9 w-9 rounded-lg border border-[#30363d] bg-[#21262d] text-[#8b949e] hover:bg-[#30363d] hover:text-white flex items-center justify-center">
+        class="h-10 w-9 rounded-lg border border-[#30363d] bg-[#21262d] text-[#8b949e] hover:bg-[#30363d] hover:text-white flex items-center justify-center">
         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
       </button>
     </div>
@@ -113,7 +111,7 @@
 </header>
 
   <!-- Main POS Screen Area -->
-  <main class="p-4 flex-1 min-h-0 overflow-hidden flex flex-col gap-4">
+  <main class="p-4 flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-3">
 
     <!-- Step 1: Customer Selector -->
     <div class="bg-[#21262d] border border-[#30363d] p-3 rounded-xl flex items-center gap-3">
@@ -146,7 +144,7 @@
         <span class="text-xs font-bold text-[#8b949e] uppercase tracking-wider">Quick Add</span>
         <span id="item-count" class="text-[10px] text-[#8b949e]">0 items</span>
       </div>
-      <div id="bestsellers-grid" class="grid grid-cols-3 gap-2">
+      <div id="bestsellers-grid" class="grid grid-cols-3 gap-2 max-h-[192px] overflow-y-auto overscroll-contain pr-0.5">
         <div class="col-span-3 text-center py-4 text-xs text-[#8b949e] bg-[#21262d] rounded-xl border border-dashed border-[#30363d]">
           Sync data to view inventory
         </div>
@@ -159,7 +157,7 @@
         <span class="text-xs font-bold text-[#8b949e] uppercase tracking-wider">Current Cart</span>
         <button onclick="clearCart()" class="text-[11px] text-[#f85149] hover:underline font-semibold">Clear</button>
       </div>
-      <div id="cart-container" class="flex-1 min-h-[120px] overflow-y-auto bg-[#21262d] border border-[#30363d] rounded-xl p-4 flex flex-col justify-center items-center text-center">
+      <div id="cart-container" class="flex-1 min-h-[110px] overflow-y-auto bg-[#21262d] border border-[#30363d] rounded-xl p-4 flex flex-col justify-center items-center text-center">
         <i data-lucide="shopping-bag" class="w-8 h-8 text-[#8b949e] opacity-40 mb-2"></i>
         <p class="text-xs text-[#8b949e]">Your cart is empty.<br>Tap items above to add to sale.</p>
       </div>
@@ -182,7 +180,7 @@
     <span>Pay & Create Invoice</span>
   </button>
   <div class="mt-1.5 text-center text-[9px] text-[#8b949e]">Tax and discounts are not currently applied by the POS.</div>
-  <div class="mt-1 text-center text-[8px] text-[#484f58]">POS V1.7</div>
+  <div class="mt-1 text-center text-[8px] text-[#484f58]">POS V1.9</div>
 </footer>
 
 </div>
@@ -390,7 +388,7 @@ async function loadPosData() {
     if(syncDot) syncDot.className='w-1.5 h-1.5 rounded-full bg-[#3fb950]';
     if(syncLabel) syncLabel.textContent='Synced';
     document.getElementById('item-count').textContent=`${saleable.length.toLocaleString()} items`;
-    renderBestsellers(saleable.slice(0,9));
+    renderBestsellers(saleable.slice(0,6));
   }catch(e){
     status.textContent='⚠ '+e.message;
     if(syncDot) syncDot.className='w-1.5 h-1.5 rounded-full bg-[#f85149]';
@@ -421,7 +419,7 @@ function renderBestsellers(items) {
   box.innerHTML=items.map(r=>{
     const price=itemPrice(r),name=itemName(r),code=itemCode(r),type=itemType(r),stocked=isStocked(r),avail=availableQtyForRecord(r),disabled=stocked&&avail<=0;
     const typeLabel=type==='inventory-kit'?'Inventory kit':type==='non-inventory'?'Non-inventory':`On hand: ${formatQty(getQtyOwned(r.key))}`;
-    return `<button ${disabled?'disabled':''} onclick="addToCart('${String(r.key).replace(/'/g,"\\'")}')" class="bg-[#21262d] hover:bg-[#30363d] disabled:opacity-40 disabled:cursor-not-allowed border border-[#30363d] hover:border-[#58a6ff] p-3 rounded-xl text-left active:scale-95 transition-all flex flex-col justify-between min-h-[96px]" title="${escapeHtml(name)}${code?' · '+escapeHtml(code):''}">
+    return `<button ${disabled?'disabled':''} onclick="addToCart('${String(r.key).replace(/'/g,"\\'")}')" class="bg-[#21262d] hover:bg-[#30363d] disabled:opacity-40 disabled:cursor-not-allowed border border-[#30363d] hover:border-[#58a6ff] p-3 rounded-xl text-left active:scale-95 transition-all flex flex-col justify-between min-h-[84px]" title="${escapeHtml(name)}${code?' · '+escapeHtml(code):''}">
       <span class="text-sm font-bold text-white line-clamp-2 w-full">${escapeHtml(name)}</span>
       ${code?`<span class="text-[9px] text-[#8b949e] truncate w-full">${escapeHtml(code)}</span>`:''}
       <span class="text-sm font-bold text-[#3fb950]">₱${price.toFixed(2)}</span>
@@ -561,7 +559,7 @@ function renderCart() {
   document.getElementById('checkout-btn').disabled = !cart.length;
 
   if (!cart.length) {
-    box.className = "bg-[#21262d] border border-[#30363d] rounded-xl p-4 min-h-[140px] flex flex-col justify-center items-center text-center";
+    box.className = "bg-[#21262d] border border-[#30363d] rounded-xl p-4 min-h-[110px] flex flex-col justify-center items-center text-center";
     box.innerHTML = '<i data-lucide="shopping-bag" class="w-8 h-8 text-[#8b949e] opacity-40 mb-2"></i><p class="text-xs text-[#8b949e]">Your cart is empty.<br>Search or tap a Quick Add item.</p>';
     lucide.createIcons();
     return;
@@ -1115,10 +1113,35 @@ async function createReceiptForLastInvoice() {
       }
     };
 
-    const key = await apiCall('POST', '/api4/receipt', payload);
+    let key = await apiCall('POST', '/api4/receipt', payload);
+
+    // Some Manager businesses can expose a customer/control-account mapping
+    // that is valid for lookup but is not accepted as the AR line account.
+    // If the first attempt is rejected/returns no key, retry once using the
+    // confirmed AR fallback used by the working Toolkit POS. This retry is
+    // only made after the first POST failed, so it cannot duplicate a
+    // successfully created receipt.
+    if (!key && arAccount !== TEST_BUSINESS_AR_FALLBACK) {
+      const retryPayload = {
+        value: {
+          date: (sale.issueDate || todayISO()) + 'T00:00:00',
+          reference: sale.reference,
+          paidBy: 1,
+          customer: sale.customerKey,
+          receivedIn,
+          lines: [{
+            account: TEST_BUSINESS_AR_FALLBACK,
+            accountsReceivableCustomer: sale.customerKey,
+            accountsReceivableSalesInvoice: sale.key,
+            amount
+          }]
+        }
+      };
+      key = await apiCall('POST', '/api4/receipt', retryPayload);
+    }
 
     if (!key) {
-      throw new Error('Manager returned an empty Receipt response. Payment was not confirmed.');
+      throw new Error('Manager rejected the Receipt. Payment was not confirmed. Please verify the Accounts Receivable account and invoice.');
     }
 
     window.posLastCreatedReceipt = {
