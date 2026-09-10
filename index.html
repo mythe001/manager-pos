@@ -983,6 +983,20 @@ function todayISO() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Sales invoices created here store a bare "YYYY-MM-DD" issueDate, but
+// invoices loaded back from Manager's API (unpaid invoices) come with a
+// full "YYYY-MM-DDT00:00:00" timestamp already attached. Without this,
+// re-appending 'T00:00:00' to an already-stamped date produces a malformed
+// value like "2025-01-15T00:00:00T00:00:00", which Manager silently
+// rejects — the reason payments on existing unpaid invoices failed to
+// post while payments on freshly created sales worked fine.
+function dateOnly(value) {
+  if (!value) return '';
+  const s = String(value);
+  const tIndex = s.indexOf('T');
+  return tIndex > -1 ? s.slice(0, tIndex) : s.slice(0, 10);
+}
+
 async function createSalesInvoiceFromCart() {
   if (checkoutBusy || !cart.length) return;
 
@@ -1266,7 +1280,7 @@ async function createReceiptForLastInvoice() {
     // Clean AR Receipt Payload for Manager v4
     const payload = {
       value: {
-        date: (sale.issueDate || todayISO()) + 'T00:00:00',
+        date: todayISO() + 'T00:00:00',
         reference: sale.reference,
         paidBy: 1, // 1 = Customer. Without this, Manager doesn't know who
                    // the receipt is FROM, so it never applies against the
@@ -1324,7 +1338,7 @@ async function createReceiptForLastInvoice() {
     if (!key) {
       const minimalPayload = {
         value: {
-          date: (sale.issueDate || todayISO()) + 'T00:00:00',
+          date: todayISO() + 'T00:00:00',
           reference: sale.reference,
           paidBy: 1, // Customer — same fix as the primary payload above
           customer: customerKey,
