@@ -10,8 +10,8 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
   body {
-    background-color: #0d1117;
-    color: #e6edf3;
+    background-color: #111820;
+    color: #F5F7FA;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -21,14 +21,14 @@
     width: 100%;
     text-align: left;
     padding: 10px 12px;
-    border-bottom: 1px solid #21262d;
-    background: #0d1117;
+    border-bottom: 1px solid #242D38;
+    background: #111820;
     color: #fff;
     cursor: pointer;
   }
   .inventory-dropdown-item:last-child { border-bottom: 0; }
   .inventory-dropdown-item:hover,
-  .inventory-dropdown-item.active { background: #161b22; }
+  .inventory-dropdown-item.active { background: #1B222B; }
   .inventory-dropdown-item.disabled { cursor: not-allowed; opacity: .55; }
   .inventory-dropdown-meta {
     display: flex;
@@ -37,29 +37,80 @@
     gap: 12px;
     margin-top: 3px;
     font-size: 11px;
-    color: #8b949e;
+    color: #B4C0CC;
   }
-  .inventory-dropdown-price { color: #3fb950; font-weight: 600; white-space: nowrap; }
-  .inventory-dropdown-empty { padding: 12px; font-size: 12px; color: #8b949e; }
+  .inventory-dropdown-price { color: #28D66B; font-weight: 600; white-space: nowrap; }
+  .inventory-dropdown-empty { padding: 12px; font-size: 12px; color: #B4C0CC; }
   #pos-toast-container { pointer-events: none; }
   .pos-toast { pointer-events: auto; animation: posToastIn .18s ease-out; }
   @keyframes posToastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-</style>
-</head>
-<body class="min-h-screen bg-[#0d1117] text-[#e6edf3]">
 
-<div class="min-h-screen max-w-7xl mx-auto border-x border-[#30363d] flex flex-col bg-[#161b22] relative shadow-2xl">
+/* POS decimal quantity control */
+.cart-qty-editor {
+  width: 58px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  background: #202832;
+  border: 1px solid #384352;
+  border-radius: 10px;
+  color: #F5F7FA;
+  height: 34px;
+  padding: 0 6px;
+}
+.cart-qty-editor:focus {
+  outline: none;
+  border-color: #4DA3FF;
+  box-shadow: 0 0 0 2px rgba(77,163,255,.18);
+}
+
+</style>
+
+<style>
+  /* Visibility pass — visual only */
+  body { color: #F5F7FA; }
+
+  /* Make product cards easier to scan */
+  #bestsellers-grid > button {
+    border-color: #384352;
+  }
+  #bestsellers-grid > button:hover:not(:disabled) {
+    border-color: #4DA3FF;
+    background-color: #2A3440;
+  }
+
+  /* Make cart controls more legible */
+  #cart-container button {
+    border-color: #384352;
+  }
+
+  /* Stronger focus visibility for cashier inputs */
+  input:focus, select:focus {
+    outline-color: #4DA3FF;
+  }
+
+  /* Keep secondary information readable without overpowering primary text */
+  .inventory-dropdown-meta,
+  .inventory-dropdown-empty {
+    color: #B4C0CC;
+  }
+</style>
+
+</head>
+<body class="min-h-screen bg-[#111820] text-[#F5F7FA]">
+
+<div class="min-h-screen max-w-7xl mx-auto border-x border-[#384352] flex flex-col bg-[#1B222B] relative shadow-2xl">
 
   <!-- Header & Sync Control Bar -->
-  <header class="px-4 py-3 border-b border-[#30363d] bg-[#161b22] shrink-0 sticky top-0 z-30">
+  <header class="px-4 py-3 border-b border-[#384352] bg-[#1B222B] shrink-0 sticky top-0 z-30">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <span class="text-base font-extrabold text-white tracking-tight">Manager.io POS</span>
-          <span class="text-[10px] font-semibold bg-[#21262d] text-[#8b949e] border border-[#30363d] px-2 py-0.5 rounded-full">v2.6</span>
+          <span class="text-[10px] font-semibold bg-[#242D38] text-[#B4C0CC] border border-[#384352] px-2 py-0.5 rounded-full">v2.6</span>
         </div>
-        <div class="mt-0.5 inline-flex items-center gap-1.5 text-xs text-[#8b949e]">
-          <span id="sync-dot" class="w-2 h-2 rounded-full bg-[#d29922] shrink-0"></span>
+        <div class="mt-0.5 inline-flex items-center gap-1.5 text-xs text-[#B4C0CC]">
+          <span id="sync-dot" class="w-2 h-2 rounded-full bg-[#F6B73C] shrink-0"></span>
           <span id="sync-label" class="truncate">Not synced</span>
         </div>
       </div>
@@ -68,57 +119,57 @@
       <div class="flex items-center gap-2 shrink-0">
         <!-- Park Sale: icon left + text right -->
         <button type="button" onclick="parkCurrentOrder()" title="Park current sale"
-          class="h-10 px-3 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] active:scale-95 transition-all flex items-center gap-2 text-xs font-bold">
-          <i data-lucide="pause-circle" class="w-4 h-4 text-[#58a6ff]"></i>
+          class="h-10 px-3 rounded-lg border border-[#384352] bg-[#242D38] text-white hover:bg-[#384352] active:scale-95 transition-all flex items-center gap-2 text-xs font-bold">
+          <i data-lucide="pause-circle" class="w-4 h-4 text-[#4DA3FF]"></i>
           <span class="hidden sm:inline">Park Sale</span>
         </button>
 
         <!-- Parked: icon left + text right -->
         <button type="button" onclick="openParkedOrders()" title="View parked orders"
-          class="h-10 px-3 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] active:scale-95 transition-all flex items-center gap-1.5 text-xs font-bold">
-          <i data-lucide="layers" class="w-4 h-4 text-[#d29922]"></i>
-          <span>Parked <span id="parked-orders-count" class="text-[#8b949e]">(0)</span></span>
+          class="h-10 px-3 rounded-lg border border-[#384352] bg-[#242D38] text-white hover:bg-[#384352] active:scale-95 transition-all flex items-center gap-1.5 text-xs font-bold">
+          <i data-lucide="layers" class="w-4 h-4 text-[#F6B73C]"></i>
+          <span>Parked <span id="parked-orders-count" class="text-[#B4C0CC]">(0)</span></span>
         </button>
 
         <!-- Receive Payment: icon left + text right -->
         <button type="button" onclick="openUnpaidInvoices()" title="Receive payment for existing unpaid invoice"
-          class="h-10 px-3 rounded-lg border border-[#30363d] bg-[#21262d] text-white hover:bg-[#30363d] active:scale-95 transition-all flex items-center gap-2 text-xs font-bold">
-          <i data-lucide="wallet-cards" class="w-4 h-4 text-[#3fb950]"></i>
+          class="h-10 px-3 rounded-lg border border-[#384352] bg-[#242D38] text-white hover:bg-[#384352] active:scale-95 transition-all flex items-center gap-2 text-xs font-bold">
+          <i data-lucide="wallet-cards" class="w-4 h-4 text-[#28D66B]"></i>
           <span>Receive Payment</span>
         </button>
 
         <!-- Sync: icon only -->
         <button id="load-btn" onclick="loadPosData()" title="Sync Manager data"
-          class="h-10 w-10 rounded-lg border border-[#30363d] bg-[#21262d] text-[#8b949e] hover:bg-[#30363d] hover:text-white active:scale-95 transition-all flex items-center justify-center shrink-0">
+          class="h-10 w-10 rounded-lg border border-[#384352] bg-[#242D38] text-[#B4C0CC] hover:bg-[#384352] hover:text-white active:scale-95 transition-all flex items-center justify-center shrink-0">
           <i data-lucide="refresh-cw" class="w-4 h-4"></i>
         </button>
       </div>
     </div>
 
-    <div class="mt-2.5 h-1 bg-[#21262d] rounded-full overflow-hidden">
-      <div id="prog-bar" class="bg-[#238636] h-full w-0 transition-all duration-300"></div>
+    <div class="mt-2.5 h-1 bg-[#242D38] rounded-full overflow-hidden">
+      <div id="prog-bar" class="bg-[#1C9E4B] h-full w-0 transition-all duration-300"></div>
     </div>
-    <div id="status-txt" class="mt-1 text-[11px] text-[#8b949e] truncate">Tap sync to load Manager data</div>
+    <div id="status-txt" class="mt-1 text-[11px] text-[#B4C0CC] truncate">Tap sync to load Manager data</div>
   </header>
 
   <!-- Responsive Main Workspace Layout -->
   <main class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-0 overflow-hidden min-h-0">
 
     <!-- LEFT COLUMN: Customer Selection + Search + Quick Add Grid -->
-    <section class="md:col-span-7 lg:col-span-8 p-4 flex flex-col gap-4 border-b md:border-b-0 md:border-r border-[#30363d] overflow-y-auto">
+    <section class="md:col-span-7 lg:col-span-8 p-4 flex flex-col gap-4 border-b md:border-b-0 md:border-r border-[#384352] overflow-y-auto">
 
       <!-- Step 1: Customer Selector -->
-      <div class="bg-[#21262d] border border-[#30363d] p-3 rounded-xl flex items-center gap-3 shadow-sm">
-        <div class="p-2 bg-[#1f6feb1a] text-[#58a6ff] rounded-lg border border-[#1f6feb33] shrink-0">
+      <div class="bg-[#242D38] border border-[#384352] p-3 rounded-xl flex items-center gap-3 shadow-sm">
+        <div class="p-2 bg-[#287FE01a] text-[#4DA3FF] rounded-lg border border-[#287FE033] shrink-0">
           <i data-lucide="user" class="w-5 h-5"></i>
         </div>
         <div class="min-w-0 flex-1">
-          <label class="block text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">Customer</label>
+          <label class="block text-[10px] font-bold uppercase tracking-wider text-[#B4C0CC]">Customer</label>
           <select id="customer-select" class="w-full bg-transparent text-sm font-semibold text-white focus:outline-none cursor-pointer truncate">
           </select>
         </div>
         <button type="button" onclick="openNewCustomer()" title="Add new customer"
-          class="h-9 px-3 rounded-lg border border-[#30363d] bg-[#0d1117] text-[#58a6ff] hover:bg-[#30363d] active:scale-95 transition-all flex items-center gap-1.5 text-xs font-semibold shrink-0">
+          class="h-9 px-3 rounded-lg border border-[#384352] bg-[#111820] text-[#4DA3FF] hover:bg-[#384352] active:scale-95 transition-all flex items-center gap-1.5 text-xs font-semibold shrink-0">
           <i data-lucide="user-plus" class="w-4 h-4"></i>
           <span class="hidden sm:inline">New</span>
         </button>
@@ -126,26 +177,26 @@
 
       <!-- Step 2: Product Search Bar -->
       <div class="relative">
-        <i data-lucide="search" class="w-4 h-4 text-[#8b949e] absolute left-3.5 top-3 z-10"></i>
+        <i data-lucide="search" class="w-4 h-4 text-[#B4C0CC] absolute left-3.5 top-3 z-10"></i>
         <div class="relative">
           <input type="text" id="search-input" placeholder="Search products by name or code..."
             oninput="handleSearch(this.value)" onfocus="handleSearch(this.value)" onkeydown="handleSearchKeydown(event)"
             autocomplete="off"
-            class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff]">
-          <div id="inventory-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-50 bg-[#0d1117] border border-[#30363d] rounded-xl shadow-2xl max-h-72 overflow-y-auto"></div>
+            class="w-full bg-[#111820] border border-[#384352] rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-[#B4C0CC] focus:outline-none focus:border-[#4DA3FF] focus:ring-1 focus:ring-[#4DA3FF]">
+          <div id="inventory-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-50 bg-[#111820] border border-[#384352] rounded-xl shadow-2xl max-h-72 overflow-y-auto"></div>
         </div>
       </div>
 
       <!-- Step 3: Quick Add Items Grid -->
       <div class="flex-1 flex flex-col min-h-0">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-bold text-[#8b949e] uppercase tracking-wider">Quick Add Catalog</span>
-          <span id="item-count" class="text-xs text-[#8b949e] font-medium">0 items</span>
+          <span class="text-xs font-bold text-[#B4C0CC] uppercase tracking-wider">Quick Add Catalog</span>
+          <span id="item-count" class="text-xs text-[#B4C0CC] font-medium">0 items</span>
         </div>
         
         <div id="bestsellers-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 overflow-y-auto p-0.5 max-h-[480px] md:max-h-none">
-          <div class="col-span-full text-center py-10 text-xs text-[#8b949e] bg-[#21262d] rounded-2xl border border-dashed border-[#30363d]">
-            <i data-lucide="refresh-cw" class="w-6 h-6 mx-auto mb-2 text-[#8b949e] opacity-40"></i>
+          <div class="col-span-full text-center py-10 text-xs text-[#B4C0CC] bg-[#242D38] rounded-2xl border border-dashed border-[#384352]">
+            <i data-lucide="refresh-cw" class="w-6 h-6 mx-auto mb-2 text-[#B4C0CC] opacity-40"></i>
             Sync Manager data to display product catalog
           </div>
         </div>
@@ -154,37 +205,37 @@
     </section>
 
     <!-- RIGHT COLUMN: Current Cart & Checkout Panel -->
-    <section class="md:col-span-5 lg:col-span-4 bg-[#1c2128] flex flex-col h-full min-h-0">
+    <section class="md:col-span-5 lg:col-span-4 bg-[#202832] flex flex-col h-full min-h-0">
       
       <!-- Cart Header -->
-      <div class="p-4 border-b border-[#30363d] flex items-center justify-between shrink-0 bg-[#161b22]">
+      <div class="p-4 border-b border-[#384352] flex items-center justify-between shrink-0 bg-[#1B222B]">
         <div class="flex items-center gap-2">
-          <i data-lucide="shopping-cart" class="w-4 h-4 text-[#58a6ff]"></i>
+          <i data-lucide="shopping-cart" class="w-4 h-4 text-[#4DA3FF]"></i>
           <span class="text-xs font-bold text-white uppercase tracking-wider">Current Cart</span>
         </div>
-        <button onclick="clearCart()" class="text-xs text-[#f85149] hover:underline font-semibold flex items-center gap-1">
+        <button onclick="clearCart()" class="text-xs text-[#FF5C5C] hover:underline font-semibold flex items-center gap-1">
           <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear
         </button>
       </div>
 
       <!-- Cart Line Items Scroll Area -->
       <div id="cart-container" class="flex-1 min-h-[220px] overflow-y-auto p-4 flex flex-col justify-center items-center text-center">
-        <i data-lucide="shopping-bag" class="w-10 h-10 text-[#8b949e] opacity-30 mb-2"></i>
-        <p class="text-xs text-[#8b949e]">Your cart is empty.<br>Select items from the catalog to build a sale.</p>
+        <i data-lucide="shopping-bag" class="w-10 h-10 text-[#B4C0CC] opacity-30 mb-2"></i>
+        <p class="text-xs text-[#B4C0CC]">Your cart is empty.<br>Select items from the catalog to build a sale.</p>
       </div>
 
       <!-- Cart Checkout Footer -->
-      <footer class="shrink-0 bg-[#161b22] border-t border-[#30363d] p-4 shadow-lg">
+      <footer class="shrink-0 bg-[#1B222B] border-t border-[#384352] p-4 shadow-lg">
         <div class="flex items-center justify-between mb-1.5">
-          <span class="text-xs text-[#8b949e] font-medium">Subtotal</span>
+          <span class="text-xs text-[#B4C0CC] font-medium">Subtotal</span>
           <span id="cart-subtotal" class="text-sm font-semibold text-white">₱0.00</span>
         </div>
         <div class="flex items-end justify-between mb-4">
           <span class="text-base font-extrabold text-white">TOTAL</span>
-          <span id="cart-total" class="text-2xl font-black text-[#3fb950]">₱0.00</span>
+          <span id="cart-total" class="text-2xl font-black text-[#28D66B]">₱0.00</span>
         </div>
         <button id="checkout-btn" disabled onclick="checkout()"
-          class="w-full bg-[#238636] hover:bg-[#2ea043] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-all active:scale-98 shadow-lg flex items-center justify-center gap-2 text-sm">
+          class="w-full bg-[#1C9E4B] hover:bg-[#25B85A] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-all active:scale-98 shadow-lg flex items-center justify-center gap-2 text-sm">
           <i data-lucide="credit-card" class="w-4 h-4"></i>
           <span>Pay & Create Sales Invoice</span>
         </button>
@@ -200,13 +251,13 @@
 
 <!-- Parked Orders Modal -->
 <div id="parked-orders-modal" class="hidden fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm p-4 flex items-center justify-center">
-  <div class="w-full max-w-md bg-[#161b22] border border-[#30363d] rounded-2xl shadow-2xl overflow-hidden">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
+  <div class="w-full max-w-md bg-[#1B222B] border border-[#384352] rounded-2xl shadow-2xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[#384352]">
       <div>
         <div class="font-bold text-white text-sm">Parked Orders</div>
-        <div class="text-xs text-[#8b949e]">Retrieve a saved order to resume checkout.</div>
+        <div class="text-xs text-[#B4C0CC]">Retrieve a saved order to resume checkout.</div>
       </div>
-      <button type="button" onclick="closeParkedOrders()" class="text-[#8b949e] hover:text-white p-1">&times;</button>
+      <button type="button" onclick="closeParkedOrders()" class="text-[#B4C0CC] hover:text-white p-1">&times;</button>
     </div>
     <div id="parked-orders-list" class="max-h-[60vh] overflow-y-auto"></div>
   </div>
@@ -214,25 +265,25 @@
 
 <!-- Review & Checkout Modal -->
 <div id="checkout-modal" class="hidden fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm p-4 flex items-center justify-center">
-  <div class="w-full max-w-md bg-[#161b22] border border-[#30363d] rounded-2xl shadow-2xl overflow-hidden">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
+  <div class="w-full max-w-md bg-[#1B222B] border border-[#384352] rounded-2xl shadow-2xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[#384352]">
       <div>
         <div class="font-bold text-white text-sm">Review & Create Sales Invoice</div>
-        <div class="text-xs text-[#8b949e]">Posts a new Sales Invoice to Manager.io</div>
+        <div class="text-xs text-[#B4C0CC]">Posts a new Sales Invoice to Manager.io</div>
       </div>
-      <button type="button" onclick="closeCheckout()" class="text-[#8b949e] hover:text-white p-1">&times;</button>
+      <button type="button" onclick="closeCheckout()" class="text-[#B4C0CC] hover:text-white p-1">&times;</button>
     </div>
     <div class="p-4">
-      <div id="checkout-customer" class="mb-3 text-xs font-medium text-[#8b949e]"></div>
+      <div id="checkout-customer" class="mb-3 text-xs font-medium text-[#B4C0CC]"></div>
       <div id="checkout-summary" class="space-y-2 max-h-48 overflow-y-auto pr-1"></div>
-      <div class="mt-4 pt-3 border-t border-[#30363d] flex items-center justify-between">
+      <div class="mt-4 pt-3 border-t border-[#384352] flex items-center justify-between">
         <span class="font-bold text-white text-sm">Total</span>
-        <span id="checkout-total" class="font-black text-lg text-[#3fb950]">₱0.00</span>
+        <span id="checkout-total" class="font-black text-lg text-[#28D66B]">₱0.00</span>
       </div>
-      <div id="checkout-error" class="hidden mt-3 rounded-xl border border-[#f85149]/40 bg-[#f85149]/10 p-3 text-xs text-[#f85149]"></div>
+      <div id="checkout-error" class="hidden mt-3 rounded-xl border border-[#FF5C5C]/40 bg-[#FF5C5C]/10 p-3 text-xs text-[#FF5C5C]"></div>
       <div class="mt-4 flex gap-2">
-        <button type="button" onclick="closeCheckout()" class="flex-1 px-4 py-2.5 rounded-xl border border-[#30363d] bg-[#21262d] text-xs font-bold text-white hover:bg-[#30363d]">Cancel</button>
-        <button type="button" id="create-invoice-button" onclick="createSalesInvoiceFromCart()" class="flex-1 px-4 py-2.5 rounded-xl bg-[#238636] text-white text-xs font-bold hover:bg-[#2ea043]">Create Invoice</button>
+        <button type="button" onclick="closeCheckout()" class="flex-1 px-4 py-2.5 rounded-xl border border-[#384352] bg-[#242D38] text-xs font-bold text-white hover:bg-[#384352]">Cancel</button>
+        <button type="button" id="create-invoice-button" onclick="createSalesInvoiceFromCart()" class="flex-1 px-4 py-2.5 rounded-xl bg-[#1C9E4B] text-white text-xs font-bold hover:bg-[#25B85A]">Create Invoice</button>
       </div>
     </div>
   </div>
@@ -240,33 +291,33 @@
 
 <!-- Payment Modal -->
 <div id="payment-modal" class="hidden fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm p-4 flex items-center justify-center">
-  <div class="w-full max-w-md bg-[#161b22] border border-[#30363d] rounded-2xl shadow-2xl overflow-hidden">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
+  <div class="w-full max-w-md bg-[#1B222B] border border-[#384352] rounded-2xl shadow-2xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[#384352]">
       <div>
         <div class="font-bold text-white text-sm">Record Receipt Payment</div>
-        <div class="text-xs text-[#8b949e]">Post a payment receipt for this Sales Invoice</div>
+        <div class="text-xs text-[#B4C0CC]">Post a payment receipt for this Sales Invoice</div>
       </div>
-      <button type="button" onclick="closePayment()" class="text-[#8b949e] hover:text-white p-1">&times;</button>
+      <button type="button" onclick="closePayment()" class="text-[#B4C0CC] hover:text-white p-1">&times;</button>
     </div>
 
     <div class="p-4">
-      <div id="payment-invoice-info" class="text-xs font-medium text-[#8b949e] bg-[#21262d] p-2.5 rounded-xl border border-[#30363d]"></div>
+      <div id="payment-invoice-info" class="text-xs font-medium text-[#B4C0CC] bg-[#242D38] p-2.5 rounded-xl border border-[#384352]"></div>
 
       <div class="mt-4">
-        <label class="block text-xs font-bold text-[#8b949e] mb-1 uppercase tracking-wider">Deposit Account</label>
-        <select id="payment-account-select" class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl px-3 py-2.5 text-sm font-semibold text-white focus:outline-none focus:border-[#58a6ff]"></select>
+        <label class="block text-xs font-bold text-[#B4C0CC] mb-1 uppercase tracking-wider">Deposit Account</label>
+        <select id="payment-account-select" class="w-full bg-[#111820] border border-[#384352] rounded-xl px-3 py-2.5 text-sm font-semibold text-white focus:outline-none focus:border-[#4DA3FF]"></select>
       </div>
 
       <div class="mt-4">
-        <label class="block text-xs font-bold text-[#8b949e] mb-1 uppercase tracking-wider">Amount Received</label>
-        <input id="payment-amount" type="number" min="0" step="0.01" class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl px-3 py-2.5 text-sm font-semibold text-white focus:outline-none focus:border-[#58a6ff]">
+        <label class="block text-xs font-bold text-[#B4C0CC] mb-1 uppercase tracking-wider">Amount Received</label>
+        <input id="payment-amount" type="number" min="0" step="0.01" class="w-full bg-[#111820] border border-[#384352] rounded-xl px-3 py-2.5 text-sm font-semibold text-white focus:outline-none focus:border-[#4DA3FF]">
       </div>
 
-      <div id="payment-error" class="hidden mt-3 rounded-xl border border-[#f85149]/40 bg-[#f85149]/10 p-3 text-xs text-[#f85149]"></div>
+      <div id="payment-error" class="hidden mt-3 rounded-xl border border-[#FF5C5C]/40 bg-[#FF5C5C]/10 p-3 text-xs text-[#FF5C5C]"></div>
 
       <div class="mt-5 flex gap-2">
-        <button type="button" onclick="closePayment()" class="flex-1 px-4 py-2.5 rounded-xl border border-[#30363d] bg-[#21262d] text-xs font-bold text-white hover:bg-[#30363d]">Cancel</button>
-        <button type="button" id="record-payment-button" onclick="createReceiptForLastInvoice()" class="flex-1 px-4 py-2.5 rounded-xl bg-[#238636] text-white text-xs font-bold hover:bg-[#2ea043]">Record Payment</button>
+        <button type="button" onclick="closePayment()" class="flex-1 px-4 py-2.5 rounded-xl border border-[#384352] bg-[#242D38] text-xs font-bold text-white hover:bg-[#384352]">Cancel</button>
+        <button type="button" id="record-payment-button" onclick="createReceiptForLastInvoice()" class="flex-1 px-4 py-2.5 rounded-xl bg-[#1C9E4B] text-white text-xs font-bold hover:bg-[#25B85A]">Record Payment</button>
       </div>
     </div>
   </div>
@@ -274,45 +325,45 @@
 
 <!-- Unpaid Sales Invoices Modal -->
 <div id="unpaid-invoices-modal" class="hidden fixed inset-0 z-[115] bg-black/70 backdrop-blur-sm p-4 flex items-center justify-center">
-  <div class="w-full max-w-md bg-[#161b22] border border-[#30363d] rounded-2xl shadow-2xl overflow-hidden">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
+  <div class="w-full max-w-md bg-[#1B222B] border border-[#384352] rounded-2xl shadow-2xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[#384352]">
       <div>
         <div class="font-bold text-white text-sm">Unpaid Sales Invoices</div>
-        <div class="text-xs text-[#8b949e]">Select an unpaid invoice to receive payment</div>
+        <div class="text-xs text-[#B4C0CC]">Select an unpaid invoice to receive payment</div>
       </div>
-      <button type="button" onclick="closeUnpaidInvoices()" class="text-[#8b949e] hover:text-white p-1">&times;</button>
+      <button type="button" onclick="closeUnpaidInvoices()" class="text-[#B4C0CC] hover:text-white p-1">&times;</button>
     </div>
-    <div class="p-3 border-b border-[#30363d]">
-      <input id="unpaid-invoice-search" type="text" placeholder="Search reference or customer..." oninput="filterUnpaidInvoices(this.value)" class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl px-3 py-2 text-sm text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff]">
+    <div class="p-3 border-b border-[#384352]">
+      <input id="unpaid-invoice-search" type="text" placeholder="Search reference or customer..." oninput="filterUnpaidInvoices(this.value)" class="w-full bg-[#111820] border border-[#384352] rounded-xl px-3 py-2 text-sm text-white placeholder-[#B4C0CC] focus:outline-none focus:border-[#4DA3FF]">
     </div>
-    <div id="unpaid-invoices-status" class="px-4 py-2 text-xs font-medium text-[#8b949e]"></div>
+    <div id="unpaid-invoices-status" class="px-4 py-2 text-xs font-medium text-[#B4C0CC]"></div>
     <div id="unpaid-invoices-list" class="max-h-[55vh] overflow-y-auto"></div>
   </div>
 </div>
 
 <!-- New Customer Modal -->
 <div id="new-customer-modal" class="hidden fixed inset-0 z-[125] bg-black/70 backdrop-blur-sm p-4 flex items-center justify-center">
-  <div class="w-full max-w-md bg-[#161b22] border border-[#30363d] rounded-2xl shadow-2xl overflow-hidden">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
+  <div class="w-full max-w-md bg-[#1B222B] border border-[#384352] rounded-2xl shadow-2xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[#384352]">
       <div>
         <div class="font-bold text-white text-sm">New Customer</div>
-        <div class="text-xs text-[#8b949e]">Create a customer directly in Manager.io</div>
+        <div class="text-xs text-[#B4C0CC]">Create a customer directly in Manager.io</div>
       </div>
-      <button type="button" onclick="closeNewCustomer()" class="text-[#8b949e] hover:text-white p-1">&times;</button>
+      <button type="button" onclick="closeNewCustomer()" class="text-[#B4C0CC] hover:text-white p-1">&times;</button>
     </div>
     <div class="p-4">
-      <label class="block text-xs font-bold text-[#8b949e] mb-1">Customer Name</label>
+      <label class="block text-xs font-bold text-[#B4C0CC] mb-1">Customer Name</label>
       <input id="new-customer-name" type="text" autocomplete="off"
-        class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl px-3 py-2 text-sm text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
+        class="w-full bg-[#111820] border border-[#384352] rounded-xl px-3 py-2 text-sm text-white placeholder-[#B4C0CC] focus:outline-none focus:border-[#4DA3FF]"
         placeholder="e.g. Juan Dela Cruz">
-      <label class="block text-xs font-bold text-[#8b949e] mt-3 mb-1">Customer Code <span class="text-[#484f58]">(optional)</span></label>
+      <label class="block text-xs font-bold text-[#B4C0CC] mt-3 mb-1">Customer Code <span class="text-[#687585]">(optional)</span></label>
       <input id="new-customer-code" type="text" autocomplete="off"
-        class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl px-3 py-2 text-sm text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
+        class="w-full bg-[#111820] border border-[#384352] rounded-xl px-3 py-2 text-sm text-white placeholder-[#B4C0CC] focus:outline-none focus:border-[#4DA3FF]"
         placeholder="e.g. CUST-001">
-      <div id="new-customer-error" class="hidden mt-3 rounded-xl border border-[#f85149]/40 bg-[#f85149]/10 p-3 text-xs text-[#f85149]"></div>
+      <div id="new-customer-error" class="hidden mt-3 rounded-xl border border-[#FF5C5C]/40 bg-[#FF5C5C]/10 p-3 text-xs text-[#FF5C5C]"></div>
       <div class="mt-5 flex gap-2">
-        <button type="button" onclick="closeNewCustomer()" class="flex-1 px-4 py-2.5 rounded-xl border border-[#30363d] bg-[#21262d] text-xs font-bold text-white">Cancel</button>
-        <button type="button" id="create-customer-button" onclick="createNewCustomer()" class="flex-1 px-4 py-2.5 rounded-xl bg-[#238636] text-white text-xs font-bold">Create Customer</button>
+        <button type="button" onclick="closeNewCustomer()" class="flex-1 px-4 py-2.5 rounded-xl border border-[#384352] bg-[#242D38] text-xs font-bold text-white">Cancel</button>
+        <button type="button" id="create-customer-button" onclick="createNewCustomer()" class="flex-1 px-4 py-2.5 rounded-xl bg-[#1C9E4B] text-white text-xs font-bold">Create Customer</button>
       </div>
     </div>
   </div>
@@ -428,7 +479,41 @@ function subQty(k,q) {
 }
 function getQtyOwned(k) { return (qtyOwned[k]||0)/SCALE; }
 function formatQty(q) {
-  return Number.isInteger(q) ? String(q) : Number(q).toLocaleString(undefined,{maximumFractionDigits:6});
+  const n = Number(q);
+  if (!Number.isFinite(n)) return '0';
+  if (Number.isInteger(n)) return String(n);
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+function parseCartQty(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (!/^\d+(?:\.\d{0,2})?$/.test(text)) return null;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : null;
+}
+function setCartQty(key, value) {
+  const line = cart.find(x => x.key === key);
+  if (!line) return;
+
+  const qty = parseCartQty(value);
+  if (qty === null) {
+    showToast('Quantity must be a valid number with up to 2 decimal places.', 'error');
+    renderCart();
+    return;
+  }
+
+  if (qty <= 0) {
+    cart = cart.filter(x => x.key !== key);
+  } else if (isStocked(line) && qty > getQtyOwned(key) + 0.000001) {
+    showToast(`Only ${formatQty(getQtyOwned(key))} unit(s) on hand.`, 'error');
+    renderCart();
+    return;
+  } else {
+    line.qty = qty;
+  }
+
+  renderCart();
+  closeInventoryDropdown();
 }
 function cartQty(k) {
   const x=cart.find(i=>i.key===k);
@@ -493,8 +578,8 @@ function showToast(message,type='success',duration=2600) {
   if(!box) return;
   const isError=type==='error', isInfo=type==='info';
   const toast=document.createElement('div');
-  toast.className=`pos-toast rounded-xl border px-4 py-3 shadow-2xl bg-[#161b22] ${isError?'border-[#f85149]/60':isInfo?'border-[#58a6ff]/50':'border-[#3fb950]/50'}`;
-  toast.innerHTML=`<div class="flex items-start gap-3"><span class="text-base ${isError?'text-[#f85149]':isInfo?'text-[#58a6ff]':'text-[#3fb950]'}">${isError?'⚠':isInfo?'ℹ':'✓'}</span><div class="min-w-0 text-xs font-semibold text-white">${escapeHtml(message)}</div></div>`;
+  toast.className=`pos-toast rounded-xl border px-4 py-3 shadow-2xl bg-[#1B222B] ${isError?'border-[#FF5C5C]/60':isInfo?'border-[#4DA3FF]/50':'border-[#28D66B]/50'}`;
+  toast.innerHTML=`<div class="flex items-start gap-3"><span class="text-base ${isError?'text-[#FF5C5C]':isInfo?'text-[#4DA3FF]':'text-[#28D66B]'}">${isError?'⚠':isInfo?'ℹ':'✓'}</span><div class="min-w-0 text-xs font-semibold text-white">${escapeHtml(message)}</div></div>`;
   box.appendChild(toast);
   setTimeout(()=>{toast.style.opacity='0';toast.style.transform='translateY(8px)';setTimeout(()=>toast.remove(),180)},duration);
 }
@@ -522,7 +607,7 @@ async function loadPosData() {
   const btn=document.getElementById('load-btn'),bar=document.getElementById('prog-bar'),status=document.getElementById('status-txt');
   btn.disabled=true; bar.style.width='5%';
   const syncDot=document.getElementById('sync-dot'),syncLabel=document.getElementById('sync-label');
-  if(syncDot) syncDot.className='w-2 h-2 rounded-full bg-[#d29922] animate-pulse';
+  if(syncDot) syncDot.className='w-2 h-2 rounded-full bg-[#F6B73C] animate-pulse';
   if(syncLabel) syncLabel.textContent='Syncing…';
   try{
     status.textContent='Loading Manager data…';
@@ -545,13 +630,13 @@ async function loadPosData() {
     bar.style.width='100%';
     const saleable=getSearchableInventory();
     status.textContent=`✓ Synced · ${saleable.length.toLocaleString()} saleable items · ${paymentAccounts.length.toLocaleString()} payment accounts`;
-    if(syncDot) syncDot.className='w-2 h-2 rounded-full bg-[#3fb950]';
+    if(syncDot) syncDot.className='w-2 h-2 rounded-full bg-[#28D66B]';
     if(syncLabel) syncLabel.textContent='Synced';
     document.getElementById('item-count').textContent=`${saleable.length.toLocaleString()} items`;
     renderBestsellers(saleable);
   }catch(e){
     status.textContent='⚠ '+e.message;
-    if(syncDot) syncDot.className='w-2 h-2 rounded-full bg-[#f85149]';
+    if(syncDot) syncDot.className='w-2 h-2 rounded-full bg-[#FF5C5C]';
     if(syncLabel) syncLabel.textContent='Sync error';
     bar.style.width='0%'; showToast(e.message||'Sync failed.','error',4200);
   }finally{btn.disabled=false;}
@@ -566,7 +651,7 @@ function renderCustomerDropdown(customers) {
     if(x.inactive) return;
     const name=x.name||x.Name||x.nameWithCode||x.NameWithCode||'Unnamed Customer';
     const key=r.key||r.Key||x.key||x.Key||'';
-    const o=document.createElement('option'); o.value=key; o.textContent=name; o.className='bg-[#21262d] text-white';
+    const o=document.createElement('option'); o.value=key; o.textContent=name; o.className='bg-[#242D38] text-white';
     select.appendChild(o);
     if(String(name).trim().toLowerCase()==='walk-in customer') walkInKey=key;
   });
@@ -577,22 +662,22 @@ function renderCustomerDropdown(customers) {
 function renderBestsellers(items) {
   const box=document.getElementById('bestsellers-grid');
   if(!items.length){
-    box.innerHTML='<div class="col-span-full text-center py-8 text-xs text-[#8b949e] bg-[#21262d] rounded-2xl border border-dashed border-[#30363d]">No saleable items found</div>';
+    box.innerHTML='<div class="col-span-full text-center py-8 text-xs text-[#B4C0CC] bg-[#242D38] rounded-2xl border border-dashed border-[#384352]">No saleable items found</div>';
     return;
   }
   box.innerHTML=items.map(r=>{
     const price=itemPrice(r),name=itemName(r),code=itemCode(r),type=itemType(r),stocked=isStocked(r),avail=availableQtyForRecord(r),disabled=stocked&&avail<=0;
     const typeLabel=type==='inventory-kit'?'Kit':type==='non-inventory'?'Non-stock':`On hand: ${formatQty(getQtyOwned(r.key))}`;
     return `<button ${disabled?'disabled':''} onclick="addToCart('${String(r.key).replace(/'/g,"\\'")}')"
-      class="bg-[#21262d] hover:bg-[#30363d] disabled:opacity-40 disabled:cursor-not-allowed border border-[#30363d] hover:border-[#58a6ff] p-3 rounded-2xl text-left active:scale-95 transition-all flex flex-col justify-between min-h-[92px] group relative shadow-sm"
+      class="bg-[#242D38] hover:bg-[#384352] disabled:opacity-40 disabled:cursor-not-allowed border border-[#384352] hover:border-[#4DA3FF] p-3 rounded-2xl text-left active:scale-95 transition-all flex flex-col justify-between min-h-[92px] group relative shadow-sm"
       title="${escapeHtml(name)}${code?' · '+escapeHtml(code):''}">
       <div class="w-full">
-        <span class="text-xs font-bold text-white group-hover:text-[#58a6ff] line-clamp-2 leading-tight block">${escapeHtml(name)}</span>
-        ${code?`<span class="text-[9px] font-mono text-[#8b949e] truncate block mt-0.5">${escapeHtml(code)}</span>`:''}
+        <span class="text-xs font-bold text-white group-hover:text-[#4DA3FF] line-clamp-2 leading-tight block">${escapeHtml(name)}</span>
+        ${code?`<span class="text-[9px] font-mono text-[#B4C0CC] truncate block mt-0.5">${escapeHtml(code)}</span>`:''}
       </div>
-      <div class="mt-2 flex items-end justify-between gap-1 w-full border-t border-[#30363d]/50 pt-1.5">
-        <span class="text-xs font-black text-[#3fb950]">₱${price.toFixed(2)}</span>
-        <span class="text-[9px] font-semibold ${disabled?'text-[#f85149]':'text-[#8b949e]'}">${escapeHtml(typeLabel)}</span>
+      <div class="mt-2 flex items-end justify-between gap-1 w-full border-t border-[#384352]/50 pt-1.5">
+        <span class="text-xs font-black text-[#28D66B]">₱${price.toFixed(2)}</span>
+        <span class="text-[9px] font-semibold ${disabled?'text-[#FF5C5C]':'text-[#B4C0CC]'}">${escapeHtml(typeLabel)}</span>
       </div>
     </button>`;
   }).join('');
@@ -730,34 +815,48 @@ function renderCart() {
 
   if (!cart.length) {
     box.className = "flex-1 min-h-[200px] overflow-y-auto p-4 flex flex-col justify-center items-center text-center";
-    box.innerHTML = '<i data-lucide="shopping-bag" class="w-10 h-10 text-[#8b949e] opacity-30 mb-2"></i><p class="text-xs text-[#8b949e]">Your cart is empty.<br>Select items from the catalog to build a sale.</p>';
+    box.innerHTML = '<i data-lucide="shopping-bag" class="w-10 h-10 text-[#B4C0CC] opacity-30 mb-2"></i><p class="text-xs text-[#B4C0CC]">Your cart is empty.<br>Select items from the catalog to build a sale.</p>';
     lucide.createIcons();
     return;
   }
 
-  box.className = "flex-1 min-h-0 overflow-y-auto divide-y divide-[#30363d]/60 bg-[#161b22]";
+  box.className = "flex-1 min-h-0 overflow-y-auto divide-y divide-[#384352]/60 bg-[#1B222B]";
   box.innerHTML = cart.map(x => {
     const lineTotal = x.price * x.qty;
     const available = isStocked(x) ? availableQty(x.key) : Infinity;
 
-    return `<div class="p-3 bg-[#161b22] hover:bg-[#1c2128] transition-colors">
+    return `<div class="p-3 bg-[#1B222B] hover:bg-[#202832] transition-colors">
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0 flex-1 pr-1">
           <div class="font-bold text-white text-xs truncate">${escapeHtml(x.name)}</div>
-          <div class="text-[#8b949e] text-[10px] mt-0.5">₱${x.price.toFixed(2)} each${isStocked(x)?` · ${formatQty(available)} left`: ' · Non-stock'}</div>
+          <div class="text-[#B4C0CC] text-[10px] mt-0.5">₱${x.price.toFixed(2)} each${isStocked(x)?` · ${formatQty(available)} left`: ' · Non-stock'}</div>
         </div>
-        <div class="text-xs font-bold text-[#3fb950] whitespace-nowrap">₱${lineTotal.toFixed(2)}</div>
+        <div class="text-xs font-bold text-[#28D66B] whitespace-nowrap">₱${lineTotal.toFixed(2)}</div>
         <button type="button" onclick="removeFromCart('${x.key}')" title="Remove item"
-          class="w-6 h-6 rounded-lg text-[#f85149] hover:bg-[#f8514920] flex items-center justify-center shrink-0">
+          class="w-6 h-6 rounded-lg text-[#FF5C5C] hover:bg-[#FF5C5C20] flex items-center justify-center shrink-0">
           <i data-lucide="x" class="w-3.5 h-3.5"></i>
         </button>
       </div>
       <div class="mt-2 flex items-center justify-between">
-        <span class="text-[10px] text-[#8b949e] font-medium">Qty: ${x.qty}</span>
+        <div class="text-[10px] text-[#B4C0CC] font-medium">
+          Qty: ${escapeHtml(formatQty(x.qty))}
+        </div>
         <div class="flex items-center gap-1">
-          <button type="button" onclick="changeCartQty('${x.key}',-1)" class="w-7 h-7 rounded-lg bg-[#21262d] border border-[#30363d] text-white font-bold hover:bg-[#30363d] active:scale-95 flex items-center justify-center text-xs">−</button>
-          <span class="w-7 text-center text-xs font-bold text-white">${x.qty}</span>
-          <button type="button" onclick="changeCartQty('${x.key}',1)" class="w-7 h-7 rounded-lg bg-[#21262d] border border-[#30363d] text-white font-bold hover:bg-[#30363d] active:scale-95 flex items-center justify-center text-xs">+</button>
+          <button type="button"
+            onclick="changeCartQty('${x.key}',-1)"
+            class="w-8 h-8 rounded-lg bg-[#242D38] border border-[#384352] text-white font-bold hover:bg-[#384352] active:scale-95 flex items-center justify-center text-sm"
+            aria-label="Decrease quantity">−</button>
+          <input type="text" inputmode="decimal" value="${escapeHtml(formatQty(x.qty))}"
+            onchange="setCartQty('${String(x.key).replace(/'/g,"\\'")}', this.value)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+            oninput="this.value=this.value.replace(/[^0-9.]/g,'').replace(/(\\..*)\\./g,'$1').replace(/^(\\d+\\.\\d{0,2}).*$/,'$1')"
+            class="cart-qty-editor"
+            aria-label="Editable quantity for ${escapeHtml(x.name)}"
+            title="Edit quantity — up to 2 decimal places">
+          <button type="button"
+            onclick="changeCartQty('${x.key}',1)"
+            class="w-8 h-8 rounded-lg bg-[#242D38] border border-[#384352] text-white font-bold hover:bg-[#384352] active:scale-95 flex items-center justify-center text-sm"
+            aria-label="Increase quantity">+</button>
         </div>
       </div>
     </div>`;
@@ -834,7 +933,7 @@ function renderParkedOrders() {
   if (!list) return;
 
   if (!parkedOrders.length) {
-    list.innerHTML = '<div class="p-6 text-center text-xs text-[#8b949e]">No parked orders.</div>';
+    list.innerHTML = '<div class="p-6 text-center text-xs text-[#B4C0CC]">No parked orders.</div>';
     updateParkedOrdersCount();
     return;
   }
@@ -844,17 +943,17 @@ function renderParkedOrders() {
     const items = order.cart.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
 
     return `
-      <div class="px-4 py-3 border-b border-[#21262d] hover:bg-[#21262d]/50 transition-colors">
+      <div class="px-4 py-3 border-b border-[#242D38] hover:bg-[#242D38]/50 transition-colors">
         <div class="flex items-start justify-between gap-3">
           <div>
             <div class="font-bold text-white text-xs">Order #${escapeHtml(order.number)}</div>
-            <div class="text-[11px] text-[#8b949e] mt-0.5">${escapeHtml(order.customerName)} · ${items} item${items === 1 ? '' : 's'}</div>
+            <div class="text-[11px] text-[#B4C0CC] mt-0.5">${escapeHtml(order.customerName)} · ${items} item${items === 1 ? '' : 's'}</div>
           </div>
-          <div class="text-xs font-black text-[#3fb950]">₱${total.toFixed(2)}</div>
+          <div class="text-xs font-black text-[#28D66B]">₱${total.toFixed(2)}</div>
         </div>
         <div class="mt-2 flex gap-2">
-          <button type="button" onclick="retrieveParkedOrder('${order.id}')" class="flex-1 px-3 py-1.5 rounded-lg bg-[#238636] text-white text-xs font-bold hover:bg-[#2ea043]">Retrieve</button>
-          <button type="button" onclick="deleteParkedOrder('${order.id}')" class="px-3 py-1.5 rounded-lg border border-[#30363d] text-[#f85149] text-xs font-semibold hover:bg-[#21262d]">Delete</button>
+          <button type="button" onclick="retrieveParkedOrder('${order.id}')" class="flex-1 px-3 py-1.5 rounded-lg bg-[#1C9E4B] text-white text-xs font-bold hover:bg-[#25B85A]">Retrieve</button>
+          <button type="button" onclick="deleteParkedOrder('${order.id}')" class="px-3 py-1.5 rounded-lg border border-[#384352] text-[#FF5C5C] text-xs font-semibold hover:bg-[#242D38]">Delete</button>
         </div>
       </div>
     `;
@@ -947,7 +1046,7 @@ function renderCheckoutSummary() {
     <div class="flex items-center justify-between gap-3 text-xs">
       <div class="min-w-0">
         <div class="text-white font-semibold truncate">${escapeHtml(line.name)}</div>
-        <div class="text-[10px] text-[#8b949e]">${Number(line.qty) || 0} × ₱${(Number(line.price) || 0).toFixed(2)}</div>
+        <div class="text-[10px] text-[#B4C0CC]">${Number(line.qty) || 0} × ₱${(Number(line.price) || 0).toFixed(2)}</div>
       </div>
       <div class="text-white font-bold whitespace-nowrap">₱${((Number(line.qty) || 0) * (Number(line.price) || 0)).toFixed(2)}</div>
     </div>
@@ -1041,7 +1140,8 @@ async function createSalesInvoiceFromCart() {
         hasLineNumber: false,
         hasLineDescription: true,
         discount: false,
-        amountsIncludeTax: false
+        amountsIncludeTax: false,
+        alsoActsAsDeliveryNote: true
       }
     };
 
@@ -1070,7 +1170,12 @@ async function createSalesInvoiceFromCart() {
 
     cart = [];
     renderCart();
-    closeCheckout();
+
+    // The checkout modal must be closed after the invoice is successfully
+    // created. closeCheckout() intentionally refuses to close while
+    // checkoutBusy=true, so calling it here leaves the modal underneath the
+    // payment modal. That becomes visible when the cashier cancels payment.
+    document.getElementById('checkout-modal')?.classList.add('hidden');
 
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
@@ -1532,7 +1637,7 @@ async function openUnpaidInvoices() {
     const status = document.getElementById('unpaid-invoices-status');
     if (status) status.textContent = 'Error: ' + (error?.message || 'Unknown error');
     document.getElementById('unpaid-invoices-list').innerHTML =
-      '<div class="p-6 text-center text-xs text-[#f85149]">Unable to load unpaid invoices.</div>';
+      '<div class="p-6 text-center text-xs text-[#FF5C5C]">Unable to load unpaid invoices.</div>';
   } finally {
     unpaidInvoicesBusy = false;
   }
@@ -1553,21 +1658,21 @@ function filterUnpaidInvoices(query) {
   );
 
   if (!matches.length) {
-    list.innerHTML = '<div class="p-6 text-center text-xs text-[#8b949e]">No unpaid invoices match search.</div>';
+    list.innerHTML = '<div class="p-6 text-center text-xs text-[#B4C0CC]">No unpaid invoices match search.</div>';
     return;
   }
 
   list.innerHTML = matches.map(invoice => `
-    <div class="px-4 py-3 border-b border-[#21262d] hover:bg-[#21262d]/50 transition-colors">
+    <div class="px-4 py-3 border-b border-[#242D38] hover:bg-[#242D38]/50 transition-colors">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="font-bold text-white text-xs truncate">${escapeHtml(invoice.reference)}</div>
-          <div class="text-[11px] text-[#8b949e] mt-0.5">${escapeHtml(invoice.customerName)} · ${escapeHtml(formatInvoiceDate(invoice.issueDate))}</div>
+          <div class="text-[11px] text-[#B4C0CC] mt-0.5">${escapeHtml(invoice.customerName)} · ${escapeHtml(formatInvoiceDate(invoice.issueDate))}</div>
         </div>
-        <div class="text-xs font-black text-[#3fb950] whitespace-nowrap">₱${invoice.outstanding.toFixed(2)}</div>
+        <div class="text-xs font-black text-[#28D66B] whitespace-nowrap">₱${invoice.outstanding.toFixed(2)}</div>
       </div>
-      <div class="mt-1 text-[10px] text-[#8b949e]">Invoice ₱${invoice.total.toFixed(2)} · Paid ₱${invoice.paid.toFixed(2)}</div>
-      <button type="button" onclick="receivePaymentForInvoice('${invoice.key}')" class="mt-2 w-full px-3 py-2 rounded-xl bg-[#238636] text-white text-xs font-bold hover:bg-[#2ea043]">
+      <div class="mt-1 text-[10px] text-[#B4C0CC]">Invoice ₱${invoice.total.toFixed(2)} · Paid ₱${invoice.paid.toFixed(2)}</div>
+      <button type="button" onclick="receivePaymentForInvoice('${invoice.key}')" class="mt-2 w-full px-3 py-2 rounded-xl bg-[#1C9E4B] text-white text-xs font-bold hover:bg-[#25B85A]">
         Receive Payment
       </button>
     </div>
